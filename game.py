@@ -52,7 +52,7 @@ class Game:
         return self.state.current_row_index()
 
     @property
-    def response(self) -> list:
+    def response(self) -> dict:
         return self.state.get_data()
 
     def add_letter(self, letter: str):
