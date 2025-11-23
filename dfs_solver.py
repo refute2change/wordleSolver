@@ -216,7 +216,7 @@ if __name__ == "__main__":
                 decision_tree[current_word] = {}
             decision_tree[current_word][state] = next_word
     state = ""
-    g = game.game()
+    g = game.Game()
     g.new_game()
     while g.guess < 6:
         if state not in decision_tree[hsh]:
@@ -227,7 +227,8 @@ if __name__ == "__main__":
         g.add_guess(guess_word)
         g.submit_guess()
         print(f"Guess {g.guess}: {guess_word}")
-        state = wordHandle.response_to_str(g.response[g.guess - 1])
+        response = g.response["response"]
+        state = wordHandle.response_to_str(response[-1])
         print(f"Result state: {state}")
         hsh+=guess_word+state
         if g.stop:
