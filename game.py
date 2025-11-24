@@ -22,7 +22,6 @@ class State:
         return {
             "progress": self.progress,
             "response": self.response,
-            "answer": self.answer,
             "is_game_over": self.progress[-1] == self.answer or len(self.response) == 6
         }
 
@@ -158,7 +157,7 @@ class Game:
         if idx >= 6: return
 
         self.state.progress[-1] = guess
-        self.submit_guess()
+        return self.submit_guess()
 
     # --- CLI Debugging / Play Tool ---
     def play(self):
@@ -178,5 +177,5 @@ class Game:
             print(f"Colors: {self.state.response}")
 
 # Usage
-g = Game()
-g.play()
+# g = Game()
+# g.play()
