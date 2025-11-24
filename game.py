@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 @dataclass
 class State:
+    progress: list[str]
+    response: list[list[int]]
+    answer: str
     """
     Holds ONLY the data. 
     It does not know about files, rules, or how to pick answers.
@@ -35,6 +38,8 @@ class Game:
     def __init__(self):
         self.state = State()
         self.stop = False
+        with open(os.path.dirname(os.path.abspath(__file__)) + "\\answers\\allowed_words.txt", "r") as f:
+            self.answers_list = f.read().splitlines()
 
     def new_game(self):
         # We create a fresh State object rather than resetting variables manually
@@ -76,6 +81,7 @@ class Game:
         if len(self.state.progress[-1]) > 0:
             self.state.progress[-1] = self.state.progress[-1][:-1]
 
+    # for UI purposes later on, use this function
     def submit_guess(self) -> str:
         """
         Returns a status message for the UI to display (e.g., 'OK', 'Short').
@@ -85,11 +91,48 @@ class Game:
         idx = self.state.current_row_index()
         if idx >= 6: return "Game Over"
 
-        guess = self.state.progress[idx]
+        guess = self.state.progress[-1]
 
         # 1. Validation Logic
         if len(guess) != 5:
             return "Too Short"
+        if guess not in self.answers_list:
+            return "Not in Word List"
+        
+        # 2. Update Logic (FIX 2: Only calculating response here, once)
+        response = wordHandle.get_response(guess, self.state.answer)
+        self.state.response.append(response)
+
+        # 3. Check Win/Loss
+        if guess == self.state.answer:
+            self.stop = True
+            return "Win"
+        elif len(self.state.response) == 6:
+            self.stop = True
+            return "Loss"
+        else:
+            if self.state.current_row_index() < 6:
+                # Prepare the next empty row
+                self.state.progress.append("")
+                return "Next Turn"
+
+    def submit(self) -> str:
+        """
+        Returns a status message for the UI to display (e.g., 'OK', 'Short').
+        """
+        if self.stop: return "Game Ended"
+
+        idx = self.state.current_row_index()
+        if idx >= 6: return "Game Over"
+
+        guess = self.state.progress[-1]
+
+        # 1. Validation Logic
+        if len(guess) != 5:
+            return "Too Short"
+        if guess not in self.answers_list:
+            self.state.progress[-1] = ""
+            return "Not in Word List"
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)
         response = wordHandle.get_response(guess, self.state.answer)
@@ -129,11 +172,11 @@ class Game:
             for char in user_input:
                 self.add_letter(char)
             
-            result = self.submit_guess()
+            result = self.submit()
             print(f"Result: {result}")
             print(f"Board: {self.state.progress}")
             print(f"Colors: {self.state.response}")
 
 # Usage
-# g = Game()
-# g.play()
+g = Game()
+g.play()
