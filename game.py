@@ -1,7 +1,9 @@
 import wordHandle
 import random
 import os
+from dataclasses import dataclass
 
+@dataclass
 class State:
     """
     Holds ONLY the data. 
