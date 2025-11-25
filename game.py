@@ -40,10 +40,13 @@ class Game:
         with open(os.path.dirname(os.path.abspath(__file__)) + "\\answers\\allowed_words.txt", "r") as f:
             self.answers_list = f.read().splitlines()
 
-    def new_game(self):
+    def new_game(self, answer: str = ""):
         # We create a fresh State object rather than resetting variables manually
         self.state = State()
-        self.set_answer()
+        if answer == "":
+            self.set_answer()
+        else:
+            self.state.answer = answer
         self.stop = False
 
     def set_answer(self):

@@ -1,97 +1,143 @@
 import collections
+import wordHandle
 import csv
+import json
 import os
-import wordHandle  # Uses your existing module
+import time
 import game
 
-def bfs_build_decision_tree(all_guesses: list[str], initial_candidates: list[str]):
+# --- 1. LOAD THE MATRIX (Global) ---
+print("Loading Pattern Matrix... (This takes a few seconds)")
+base_path = os.path.dirname(os.path.abspath(__file__))
+# Adjust this path if your json is in a different folder
+matrix_path = os.path.join(base_path, "pattern_matrix.json")
+
+if not os.path.exists(matrix_path):
+    raise FileNotFoundError(f"Please run generate_matrix.py first. Could not find: {matrix_path}")
+
+with open(matrix_path, "r") as f:
+    DATA = json.load(f)
+
+ALLOWED_WORDS = DATA["allowed_words"] # List[str]
+ANSWER_WORDS = DATA["answer_words"]   # List[str]
+MATRIX = DATA["matrix"]               # List[List[int]]
+
+# Create Fast Lookup Maps (Word -> Index)
+ALLOWED_MAP = {w: i for i, w in enumerate(ALLOWED_WORDS)}
+ANSWER_MAP = {w: i for i, w in enumerate(ANSWER_WORDS)}
+
+# --- 2. HELPER: Integer to String ---
+def int_to_pattern_str(val: int) -> str:
     """
-    Uses BFS to build a complete Wordle decision tree.
+    Converts the compressed integer (Base 3) back to 'BGYBB' string.
+    The matrix stores: 0=Grey, 1=Yellow, 2=Green
     """
-    # 1. THE QUEUE
-    # Stores tuples: (current_history_string, list_of_remaining_answers)
+    if val == 242: return "GGGGG" # Optimization for common win case
+    
+    s = ""
+    temp = val
+    for _ in range(5):
+        rem = temp % 3
+        if rem == 0: s = "B" + s
+        elif rem == 1: s = "Y" + s
+        else: s = "G" + s
+        temp //= 3
+    return s
+
+# --- 3. THE OPTIMIZED SOLVER ---
+def bfs_build_decision_tree_fast():
+    """
+    Uses BFS + Matrix Lookup to build the decision tree.
+    Operates on INDICES (integers) for speed.
+    """
+    # Queue stores: (history_key_string, list_of_candidate_INDICES)
     queue = collections.deque()
     
-    # Initialize with the start state
-    queue.append(("", initial_candidates))
+    # Start with all answer indices [0, 1, 2, ... 2314]
+    all_candidate_indices = list(range(len(ANSWER_WORDS)))
+    queue.append(("", all_candidate_indices))
     
-    # List to store rows for CSV writing
     csv_rows = []
+    
+    # Track work for logging
+    start_time = time.time()
+    nodes_solved = 0
 
-    print(f"Starting BFS with {len(initial_candidates)} words...")
+    print(f"Starting BFS optimization using Matrix with {len(all_candidate_indices)} candidates...")
 
     while queue:
-        # 2. DEQUEUE
-        history_key, current_candidates = queue.popleft()
+        history_key, current_indices = queue.popleft()
 
-        # BASE CASE: Only one word left? We found it.
-        if len(current_candidates) == 1:
-            ans = current_candidates[0]
-            # Record the move: On 'history_key', play the answer
-            csv_rows.append([history_key, "N/A", ans])
-            # Record the win state
-            win_key = history_key + ans + "GGGGG"
-            csv_rows.append([win_key, "GGGGG", "OKAY"])
-            continue
-        
-        # Safety check for empty lists
-        if not current_candidates:
+        # BASE CASE: Solved
+        if len(current_indices) == 1:
+            ans_word = ANSWER_WORDS[current_indices[0]]
+            csv_rows.append([history_key, "N/A", ans_word])
+            csv_rows.append([history_key + ans_word + "GGGGG", "GGGGG", "OKAY"])
             continue
 
-        # 3. FIND BEST WORD (Minimax Logic)
-        best_word = ""
-        min_max_group_size = float('inf')
-        best_groups = {} 
+        if not current_indices:
+            continue
 
-        # Optimization: Check current candidates first (Quick Win), then allowed words
-        # If the list is small enough, just check everything.
-        search_space = all_guesses 
+        # --- MINIMAX LOGIC ---
+        best_word_idx = -1
+        min_worst_case = float('inf')
+        best_groups = {}
 
-        for guess in search_space:
+        # OPTIMIZATION: Adaptive Search Space
+        # If we have many candidates, we MUST check all valid guesses (to find the best splitter).
+        # If we have very few candidates (< 20), the answer is likely one of them,
+        # so we only check the candidates themselves to save time (Greedy approach).
+        if len(current_indices) < 20:
+             # We need to find the ALLOWED_INDEX for these ANSWER_INDICES
+             search_indices = [ALLOWED_MAP[ANSWER_WORDS[i]] for i in current_indices]
+        else:
+             search_indices = range(len(ALLOWED_WORDS))
+
+        for guess_idx in search_indices:
+            # Group candidates by the pattern this guess produces
+            # Key = Pattern Integer (from Matrix), Value = List of Answer Indices
             groups = collections.defaultdict(list)
             
-            for target in current_candidates:
-                # --- THE FIX IS HERE ---
-                # 1. Get the raw list response
-                raw_resp = wordHandle.get_response(guess, target)
-                # 2. Convert it to a STRING (which is hashable)
-                pattern_key = wordHandle.response_to_str(raw_resp)
-                
-                groups[pattern_key].append(target)
+            for ans_idx in current_indices:
+                # INSTANT LOOKUP vs Slow Calculation
+                pattern_int = MATRIX[guess_idx][ans_idx]
+                groups[pattern_int].append(ans_idx)
             
-            # Find worst-case split
-            current_max_group = 0
+            # Max Group Size (Minimax)
+            worst_case = 0
             if groups:
-                current_max_group = max(len(g) for g in groups.values())
+                worst_case = max(len(g) for g in groups.values())
 
-            if current_max_group < min_max_group_size:
-                min_max_group_size = current_max_group
-                best_word = guess
+            if worst_case < min_worst_case:
+                min_worst_case = worst_case
+                best_word_idx = guess_idx
                 best_groups = groups
                 
-                # Pruning: Perfect split found?
-                if min_max_group_size == 1:
+                # Pruning: Perfect split?
+                if min_worst_case == 1:
                     break
-
-        # 4. RECORD THE DECISION
-        csv_rows.append([history_key, "N/A", best_word])
         
-        if len(queue) % 10 == 0:
-            print(f"Queue: {len(queue)} | Solved: Candidates={len(current_candidates)} -> Guess={best_word}")
+        # --- RECORD RESULT ---
+        best_word = ALLOWED_WORDS[best_word_idx]
+        csv_rows.append([history_key, "N/A", best_word])
 
-        # 5. ENQUEUE NEXT STATES
-        for pattern_str, subset in best_groups.items():
-            # If pattern is "GGGGG", we won, don't add to queue
+        nodes_solved += 1
+        if nodes_solved % 100 == 0:
+            elapsed = time.time() - start_time
+            print(f"Solved {nodes_solved} nodes | Queue: {len(queue)} | Depth: {history_key.count('G')//5} | Time: {elapsed:.1f}s")
+
+        # --- ENQUEUE NEXT ---
+        for pattern_int, subset_indices in best_groups.items():
+            pattern_str = int_to_pattern_str(pattern_int)
+            
             if pattern_str == "GGGGG":
-                final_key = history_key + best_word + pattern_str
+                # Win state logic
+                final_key = history_key + best_word + "GGGGG"
                 csv_rows.append([final_key, "GGGGG", "OKAY"])
                 continue
-            
-            # Create the unique key for the NEXT state
+
             new_history = history_key + best_word + pattern_str
-            
-            # Add to queue
-            queue.append((new_history, subset))
+            queue.append((new_history, subset_indices))
 
     return csv_rows
 
@@ -161,18 +207,25 @@ def get_next_guess(game_state: dict, decision_tree: dict) -> str:
         return None
 
 if __name__ == "__main__":
+    success = 0
+    fail = 0
+    tree = load_decision_tree("bfs_matrix_tree.csv")
     g = game.Game()
-    g.new_game()
-    tree = load_decision_tree()
-    while 1:
-        state = g.response
-        print(f"Currently at guess {g.guess}, with words {state['progress']}.")
-        next_word = get_next_guess(state, tree)
-        print(f"Solver suggests: {next_word}")
-        feedback = g.add_guess(next_word)
-        state = g.response
-        print(f"Feedback: {feedback}")
-        print(f"Guesses: {state['progress']}")
-        print(f"Current state: {state['response']}")
-        if g.response["is_game_over"]:
-            break
+    for word in ANSWER_WORDS:
+        g.new_game(answer=word)
+        print(f"\nSolving for answer: {word}")
+
+        while 1:
+            state = g.response
+            word = get_next_guess(state, tree)
+            g.add_guess(word)
+            state = g.response
+            print(f"Guess: {word} | Response: {state['response']}")
+            if state["is_game_over"]:
+                if state['response'][-1] == [2,2,2,2,2]:
+                    success += 1
+                    print("Solved!")
+                else:
+                    fail += 1
+                    print("Failed to solve.")
+                break
