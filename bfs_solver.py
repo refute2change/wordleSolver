@@ -5,6 +5,7 @@ import json
 import os
 import time
 import game
+import random
 
 # --- 1. LOAD THE MATRIX (Global) ---
 print("Loading Pattern Matrix... (This takes a few seconds)")
@@ -45,50 +46,87 @@ def int_to_pattern_str(val: int) -> str:
     return s
 
 # --- 3. THE OPTIMIZED SOLVER ---
-def bfs_build_decision_tree_fast():
+def bfs_build_decision_tree_fast(start_word: str = None):
     """
     Uses BFS + Matrix Lookup to build the decision tree.
-    Operates on INDICES (integers) for speed.
+    If start_word is provided, forces that as the first move.
     """
-    # Queue stores: (history_key_string, list_of_candidate_INDICES)
     queue = collections.deque()
+    csv_rows = []
     
     # Start with all answer indices [0, 1, 2, ... 2314]
     all_candidate_indices = list(range(len(ANSWER_WORDS)))
-    queue.append(("", all_candidate_indices))
     
-    csv_rows = []
-    
-    # Track work for logging
     start_time = time.time()
     nodes_solved = 0
 
-    print(f"Starting BFS optimization using Matrix with {len(all_candidate_indices)} candidates...")
+    # --- INITIALIZATION LOGIC ---
+    if start_word:
+        # 1. FORCE THE START WORD
+        if start_word not in ALLOWED_MAP:
+            print(f"Error: '{start_word}' is not a valid guess.")
+            return []
+            
+        print(f"Forcing start word: {start_word}")
+        guess_idx = ALLOWED_MAP[start_word]
+        
+        # Record the forced decision
+        csv_rows.append(["", "N/A", start_word])
+        
+        # Calculate the immediate split (Depth 0)
+        groups = collections.defaultdict(list)
+        
+        for ans_idx in all_candidate_indices:
+            # MATRIX LOOKUP (List of Lists)
+            pattern_int = MATRIX[guess_idx][ans_idx]
+            groups[pattern_int].append(ans_idx)
+            
+        # Enqueue the results as the starting points for BFS (Depth 1)
+        for pattern_int, subset_indices in groups.items():
+            pattern_str = int_to_pattern_str(pattern_int)
+            
+            if pattern_str == "GGGGG":
+                # Instant win case
+                final_key = start_word + "GGGGG"
+                csv_rows.append([final_key, "GGGGG", "OKAY"])
+                continue
+            
+            new_history = start_word + pattern_str
+            queue.append((new_history, subset_indices, 1))
+            
+    else:
+        # 2. STANDARD: FIND BEST OPENER
+        print(f"Starting BFS to find optimal opener for {len(all_candidate_indices)} candidates...")
+        queue.append(("", all_candidate_indices, 0))
 
+    # --- MAIN BFS LOOP ---
     while queue:
-        history_key, current_indices = queue.popleft()
+        history_key, current_indices, depth = queue.popleft()
 
-        # BASE CASE: Solved
+        # BASE CASE: Solved (Only 1 option left)
         if len(current_indices) == 1:
             ans_word = ANSWER_WORDS[current_indices[0]]
             csv_rows.append([history_key, "N/A", ans_word])
             csv_rows.append([history_key + ans_word + "GGGGG", "GGGGG", "OKAY"])
             continue
 
-        if not current_indices:
-            continue
+        if not current_indices: continue
 
-        # --- MINIMAX LOGIC ---
+        # DEPTH LIMIT
+        if depth >= 6: continue
+
+        # LOGIC
         best_word_idx = -1
         min_worst_case = float('inf')
         best_groups = {}
 
         # OPTIMIZATION: Adaptive Search Space
-        # If we have many candidates, we MUST check all valid guesses (to find the best splitter).
-        # If we have very few candidates (< 20), the answer is likely one of them,
-        # so we only check the candidates themselves to save time (Greedy approach).
-        if len(current_indices) < 20:
-             # We need to find the ALLOWED_INDEX for these ANSWER_INDICES
+        # 1. If we have very few candidates (< 20), checking 12,000 words is overkill.
+        #    Just check the candidates themselves (Greedy approach).
+        # 2. CRITICAL: If depth == 5 (Last Guess), we MUST pick a candidate. 
+        #    Information gathering is useless now. We must attempt a win.
+        if depth == 5 or len(current_indices) < 20:
+             # Look up the ALLOWED_INDEX for every ANSWER_INDEX we have left
              search_indices = [ALLOWED_MAP[ANSWER_WORDS[i]] for i in current_indices]
         else:
              search_indices = range(len(ALLOWED_WORDS))
@@ -99,7 +137,7 @@ def bfs_build_decision_tree_fast():
             groups = collections.defaultdict(list)
             
             for ans_idx in current_indices:
-                # INSTANT LOOKUP vs Slow Calculation
+                # INSTANT LOOKUP (List of Lists)
                 pattern_int = MATRIX[guess_idx][ans_idx]
                 groups[pattern_int].append(ans_idx)
             
@@ -118,13 +156,17 @@ def bfs_build_decision_tree_fast():
                     break
         
         # --- RECORD RESULT ---
+        # Safety check if search_indices was empty
+        if best_word_idx == -1:
+            continue
+
         best_word = ALLOWED_WORDS[best_word_idx]
         csv_rows.append([history_key, "N/A", best_word])
 
         nodes_solved += 1
         if nodes_solved % 100 == 0:
             elapsed = time.time() - start_time
-            print(f"Solved {nodes_solved} nodes | Queue: {len(queue)} | Depth: {history_key.count('G')//5} | Time: {elapsed:.1f}s")
+            print(f"Solved {nodes_solved} nodes | Queue: {len(queue)} | Depth: {depth} | Time: {elapsed:.1f}s")
 
         # --- ENQUEUE NEXT ---
         for pattern_int, subset_indices in best_groups.items():
@@ -137,7 +179,8 @@ def bfs_build_decision_tree_fast():
                 continue
 
             new_history = history_key + best_word + pattern_str
-            queue.append((new_history, subset_indices))
+            # Add to queue with INCREASED DEPTH
+            queue.append((new_history, subset_indices, depth + 1))
 
     return csv_rows
 
@@ -209,23 +252,41 @@ def get_next_guess(game_state: dict, decision_tree: dict) -> str:
 if __name__ == "__main__":
     success = 0
     fail = 0
-    tree = load_decision_tree("bfs_matrix_tree.csv")
+    word_record = {}
+    with open(base_path + "\\answers\\allowed_words.txt", "r") as f:
+        allowed_words = f.read().splitlines()
+    
+    index = random.randint(0, len(allowed_words)-1)
+    start_word = allowed_words[index]
+    # Build the decision tree in-memory and monkey-patch the CSV loader to return it
+    print("Building BFS decision tree in-memory (no CSV)...")
+
+    csv_rows = bfs_build_decision_tree_fast(start_word="trash ")  # optionally pass start_word="raise"
+
+    _memory_tree = {}
+    for row in csv_rows:
+        if len(row) >= 3:
+            _memory_tree[row[0]] = row[2]
+
+    # Override the loader so subsequent calls return the in-memory tree
+    def load_decision_tree(*args, **kwargs):
+        return _memory_tree
+
+    tree = load_decision_tree()
     g = game.Game()
     for word in ANSWER_WORDS:
         g.new_game(answer=word)
-        print(f"\nSolving for answer: {word}")
 
         while 1:
             state = g.response
             word = get_next_guess(state, tree)
             g.add_guess(word)
             state = g.response
-            print(f"Guess: {word} | Response: {state['response']}")
             if state["is_game_over"]:
                 if state['response'][-1] == [2,2,2,2,2]:
                     success += 1
-                    print("Solved!")
                 else:
                     fail += 1
-                    print("Failed to solve.")
                 break
+    
+    print(f"\nTotal Success: {success} | Total Fail: {fail}")
