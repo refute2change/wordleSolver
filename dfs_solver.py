@@ -2,7 +2,7 @@ from typing import List
 from time import perf_counter
 import os
 import csv
-import game
+# import game
 import wordHandle
 
 # test.py
@@ -216,25 +216,29 @@ if __name__ == "__main__":
                 decision_tree[current_word] = {}
             decision_tree[current_word][state] = next_word
     state = ""
-    g = game.Game()
-    g.new_game()
-    while g.guess < 6:
+    guess = 0
+    # g = game.Game()
+    # g.new_game()
+    while guess < 6:
         if state not in decision_tree[hsh]:
             print(f"{state} not consist in the decision tree")
-            print(f"Word we need to find is {g.get_answer()}")
+            # print(f"Word we need to find is {g.get_answer()}")
         else:
             guess_word = decision_tree[hsh][state]
-        g.add_guess(guess_word)
-        g.submit_guess()
-        print(f"Guess {g.guess}: {guess_word}")
-        response = g.response["response"]
-        state = wordHandle.response_to_str(response[-1])
-        print(f"Result state: {state}")
+        # g.add_guess(guess_word)
+        guess += 1
+        print(f"Guess {guess}: {guess_word}")
+        # response = g.response["response"]
+        # state = wordHandle.response_to_str(response[-1])
+        state = input("Enter the response string (e.g., BYGBB): ").strip().upper() 
+        # print(f"Result state: {state}")
         hsh+=guess_word+state
-        if g.stop:
+        if state == "GGGGG":
             break
+        # if g.stop:
+            # break
     if state == "GGGGG":
-        print(f"Solved in {g.guess}!")
+        print(f"Solved in {guess}!")
     else:
         print(f"Fail to solve :(")
     
