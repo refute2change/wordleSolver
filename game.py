@@ -22,7 +22,8 @@ class State:
         return {
             "progress": self.progress,
             "response": self.response,
-            "is_game_over": self.progress[-1] == self.answer or len(self.response) == 6
+            "answer": self.answer,
+            "is_game_over": False if len(self.response) == 0 else (self.response[-1] == [2, 2, 2, 2, 2] or len(self.response) == 6)
         }
 
     # Helper to just get the current active row index
@@ -40,13 +41,10 @@ class Game:
         with open(os.path.dirname(os.path.abspath(__file__)) + "\\answers\\allowed_words.txt", "r") as f:
             self.answers_list = f.read().splitlines()
 
-    def new_game(self, answer: str = ""):
+    def new_game(self):
         # We create a fresh State object rather than resetting variables manually
         self.state = State()
-        if answer == "":
-            self.set_answer()
-        else:
-            self.state.answer = answer
+        self.set_answer()
         self.stop = False
 
     def set_answer(self):
@@ -55,6 +53,7 @@ class Game:
         # Kept your Windows path style as requested
         with open(path + "\\answers\\answers.txt", "r") as f:
             self.state.answer = random.choice(f.read().splitlines())
+        self.state.answer = self.state.answer.lower()
 
     @property
     def guess(self) -> int:
@@ -72,6 +71,7 @@ class Game:
         if idx >= 6: return
 
         if len(self.state.progress[-1]) < 5:
+            letter = letter.lower()
             self.state.progress[-1] += letter
 
     def remove_letter(self):
@@ -128,6 +128,7 @@ class Game:
         if idx >= 6: return "Game Over"
 
         guess = self.state.progress[-1]
+        guess = guess.lower()
 
         # 1. Validation Logic
         if len(guess) != 5:
@@ -135,6 +136,8 @@ class Game:
         if guess not in self.answers_list:
             self.state.progress[-1] = ""
             return "Not in Word List"
+        
+        print(self.state.answer)
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)
         response = wordHandle.get_response(guess, self.state.answer)
@@ -160,7 +163,7 @@ class Game:
         if idx >= 6: return
 
         self.state.progress[-1] = guess
-        return self.submit_guess()
+        self.submit_guess()
 
     # --- CLI Debugging / Play Tool ---
     def play(self):
