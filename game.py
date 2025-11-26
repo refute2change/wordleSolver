@@ -24,7 +24,7 @@ class State:
             "progress": self.progress,
             "response": self.response,
             "answer": self.answer,
-            "is_game_over": self.progress[-1] == self.answer or len(self.response) == 6
+            "is_game_over": False if len(self.response) == 0 else (self.response[-1] == [2, 2, 2, 2, 2] or len(self.response) == 6)
         }
 
     # Helper to just get the current active row index
@@ -186,7 +186,7 @@ class Game:
 # Usage
 #g = Game()
 #g.play()
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = WordleUI(root)
-    root.mainloop()
+# if __name__ == "__main__":
+#     root = tk.Tk()
+#     app = WordleUI(root)
+#     root.mainloop()

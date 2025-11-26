@@ -98,7 +98,7 @@ class WordleUI:
         Fetches data from game.state and redraws the screen.
         """
         self.canvas.delete("all")
-        data = self.game.state.get_data()
+        data = self.game.response
         
         # 1. New Game Button (Top Left)
         self.draw_button(40, 40, 140, 50, "New game", COLOR_BTN_NEW_BG, COLOR_BTN_NEW_FG, "btn_new_game")
@@ -292,7 +292,7 @@ class WordleUI:
     # --- Interaction Handlers ---
 
     def handle_keypress(self, event):
-        if self.game.state.get_data()["is_game_over"]:
+        if self.game.response["is_game_over"]:
             return
 
         key = event.keysym.upper()
@@ -339,7 +339,7 @@ class WordleUI:
             return
 
         # 4. Virtual Keyboard
-        if self.game.state.get_data()["is_game_over"]: return
+        if self.game.response["is_game_over"]: return
 
         if tag.startswith("key_"):
             val = tag.split("_")[1]
