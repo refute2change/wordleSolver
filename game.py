@@ -135,9 +135,10 @@ class Game:
         if len(guess) != 5:
             return "Too Short"
         if guess not in self.answers_list:
-            self.state.progress[-1] = ""
             return "Not in Word List"
-        
+        if guess in self.state.progress[:-1]:
+            return "Already Guessed"
+
         print(self.state.answer)
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)

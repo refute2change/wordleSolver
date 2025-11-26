@@ -359,6 +359,8 @@ class WordleUI:
             self.last_message = "The word does not exist!"
         elif result == "Too Short":
             self.last_message = "Not enough letters"
+        elif result == "Already Guessed":
+            self.last_message = "Word already guessed"
         elif result in ["Win", "Loss"]:
             self.last_message = result # UI handles game over flag
         else:
