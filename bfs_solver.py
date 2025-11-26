@@ -257,36 +257,40 @@ if __name__ == "__main__":
         allowed_words = f.read().splitlines()
     
     index = random.randint(0, len(allowed_words)-1)
-    start_word = allowed_words[index]
+
+    to_write = []
+
+    for start_word in allowed_words[:1000]:
     # Build the decision tree in-memory and monkey-patch the CSV loader to return it
-    print("Building BFS decision tree in-memory (no CSV)...")
+        csv_rows = bfs_build_decision_tree_fast(start_word = start_word)  # optionally pass start_word="raise"
 
-    csv_rows = bfs_build_decision_tree_fast(start_word="trash ")  # optionally pass start_word="raise"
+        _memory_tree = {}
+        for row in csv_rows:
+            if len(row) >= 3:
+                _memory_tree[row[0]] = row[2]
 
-    _memory_tree = {}
-    for row in csv_rows:
-        if len(row) >= 3:
-            _memory_tree[row[0]] = row[2]
+        # Override the loader so subsequent calls return the in-memory tree
+        def load_decision_tree(*args, **kwargs):
+            return _memory_tree
 
-    # Override the loader so subsequent calls return the in-memory tree
-    def load_decision_tree(*args, **kwargs):
-        return _memory_tree
+        tree = load_decision_tree()
+        g = game.Game()
+        for word in ANSWER_WORDS:
+            g.new_game(answer=word)
 
-    tree = load_decision_tree()
-    g = game.Game()
-    for word in ANSWER_WORDS:
-        g.new_game(answer=word)
-
-        while 1:
-            state = g.response
-            word = get_next_guess(state, tree)
-            g.add_guess(word)
-            state = g.response
-            if state["is_game_over"]:
-                if state['response'][-1] == [2,2,2,2,2]:
-                    success += 1
-                else:
-                    fail += 1
-                break
+            while 1:
+                state = g.response
+                word = get_next_guess(state, tree)
+                g.add_guess(word)
+                state = g.response
+                if state["is_game_over"]:
+                    if state['response'][-1] == [2,2,2,2,2]:
+                        success += 1
+                    else:
+                        fail += 1
+                    break
+        
+        to_write.append(f"\nTotal Success: {success} | Total Fail: {fail}")
     
-    print(f"\nTotal Success: {success} | Total Fail: {fail}")
+    with open("bfs_results.txt", "w+") as f:
+        f.writelines(to_write)
