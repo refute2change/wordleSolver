@@ -1,6 +1,7 @@
 import wordHandle
 import random
 import os
+import tkinter
 from dataclasses import dataclass
 
 @dataclass
@@ -53,6 +54,7 @@ class Game:
         # Kept your Windows path style as requested
         with open(path + "\\answers\\answers.txt", "r") as f:
             self.state.answer = random.choice(f.read().splitlines())
+        self.state.answer = self.state.answer.lower()
 
     @property
     def guess(self) -> int:
@@ -70,6 +72,7 @@ class Game:
         if idx >= 6: return
 
         if len(self.state.progress[-1]) < 5:
+            letter = letter.lower()
             self.state.progress[-1] += letter
 
     def remove_letter(self):
@@ -126,6 +129,7 @@ class Game:
         if idx >= 6: return "Game Over"
 
         guess = self.state.progress[-1]
+        guess = guess.lower()
 
         # 1. Validation Logic
         if len(guess) != 5:
@@ -133,6 +137,8 @@ class Game:
         if guess not in self.answers_list:
             self.state.progress[-1] = ""
             return "Not in Word List"
+        
+        print(self.state.answer)
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)
         response = wordHandle.get_response(guess, self.state.answer)
@@ -178,5 +184,9 @@ class Game:
             print(f"Colors: {self.state.response}")
 
 # Usage
-g = Game()
-g.play()
+#g = Game()
+#g.play()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = WordleUI(root)
+    root.mainloop()

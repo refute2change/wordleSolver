@@ -1,256 +1,370 @@
 import tkinter as tk
-from tkinter import messagebox
-import random
-import string
-import os
+from tkinter import font
+import game
+import math
 
-# --------------------- Configuration / Colors ---------------------
-BG = "#121213"
-TILE_BG = "#535569"
-EMPTY_TILE_BG = "#8e9091"
-TEXT_COLOR = "#ffffff"
-GREEN = "#6aaa64"
-YELLOW = "#c9b458"
-GREY = "#c7c8c9"
-DARK_GREY = "#3d4054"
-KEY_BG = "#818384"
-KEY_ACTIVE = "#565758"
+# --- Configuration & Colors ---
+COLOR_BG_MAIN = "#E3C08D"  # Matches the general tan background
+COLOR_BTN_NEW_BG = "#E7AB56"
+COLOR_BTN_NEW_FG = "#FFFFFF"
+COLOR_BOX_EMPTY_BG = "#FCE8CC"
+COLOR_BOX_EMPTY_FG = "#605C56"
+COLOR_BOX_ABSENT = "#605C56"
+COLOR_BOX_PRESENT = "#E8E53F"
+COLOR_BOX_CORRECT = "#5A9C36"
+COLOR_ERROR_TEXT = "#CB2A2A"
+COLOR_SUPPORT_PANEL = "#E7AB56" # Right side background
 
-ROWS = 6
-COLS = 5
-WORDLIST_FILE = "word-list.txt"
+# Support Panel Specifics
+COLOR_SUP_BTN_BG = "#FCE8CC"
+COLOR_SUP_BTN_FG = "#605C56"
+COLOR_SUP_BTN_ACTIVE_BG = "#5A9C36"
+COLOR_SUP_BTN_ACTIVE_FG = "#FFFFFF"
+COLOR_SUP_INPUT_BG = "#FCE8CC"
 
-# --------------------- Word List Loading ---------------------
-def load_word_list(path):
-    if not os.path.exists(path):
-        # Provide a short fallback list if file not found to prevent crash
-        return ["apple","brave","cigar","deltae","eagle","flame","grace","house","inner","joker"]
-    with open(path, "r", encoding="utf-8") as f:
-        words = [line.strip().lower() for line in f if line.strip()]
-    # Keep only 5-letter alphabetic words
-    words = [w for w in words if len(w) == 5 and all(ch in string.ascii_lowercase for ch in w)]
-    
-    return words
+KEYBOARD_LAYOUT = [
+    "QWERTYUIOP",
+    "ASDFGHJKL",
+    "ZXCVBNM"
+]
 
-# --------------------- Main Application ---------------------
-class WordleApp:
+class WordleUI:
     def __init__(self, root):
         self.root = root
-        root.title("Wordle Tkinter")
-        root.configure(bg=BG)
-        self.word_list = load_word_list(WORDLIST_FILE)
-        if not self.word_list:
-            messagebox.showerror("Error", f"No valid words found in {WORDLIST_FILE}.")
-            root.destroy()
+        self.root.title("Wordle")
+        self.root.geometry("1100x700")
+        self.root.configure(bg=COLOR_BG_MAIN)
+        self.root.resizable(False, False)
+
+        # Initialize Game Backend
+        self.game = game.Game()
+        self.game.new_game()
+
+        # UI State
+        self.last_message = ""
+        self.show_support_details = False
+        
+        # Support Default Values
+        self.rec_word = "CRACK"
+        self.selected_algo = "A*" # Default 4th option
+        self.stat_runtime = "3"
+        self.stat_space = "2"
+
+        # Setup Fonts
+        self.font_key = font.Font(family="Helvetica", size=12, weight="bold")
+        self.font_box = font.Font(family="Helvetica", size=24, weight="bold")
+        self.font_btn = font.Font(family="Helvetica", size=14, weight="bold")
+        self.font_err = font.Font(family="Helvetica", size=12, weight="normal")
+
+        # Main Canvas for drawing everything (Custom UI requires flexibility)
+        self.canvas = tk.Canvas(
+            root, width=1000, height=600, 
+            bg=COLOR_BG_MAIN, highlightthickness=0
+        )
+        self.canvas.pack(fill="both", expand=True)
+
+        # Bind Inputs
+        self.root.bind("<Key>", self.handle_keypress)
+        self.canvas.bind("<Button-1>", self.handle_click)
+
+        # Initial Draw
+        self.UI_update()
+
+    def draw_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
+        """Helper to draw rounded rectangles on Canvas"""
+        points = [
+            x1 + radius, y1,
+            x2 - radius, y1,
+            x2, y1,
+            x2, y1 + radius,
+            x2, y2 - radius,
+            x2, y2,
+            x2 - radius, y2,
+            x1 + radius, y2,
+            x1, y2,
+            x1, y2 - radius,
+            x1, y1 + radius,
+            x1, y1
+        ]
+        return self.canvas.create_polygon(points, **kwargs, smooth=True)
+
+    def draw_button(self, x, y, w, h, text, bg, fg, tag, radius=25):
+        self.draw_rounded_rect(x, y, x + w, y + h, radius, fill=bg, tags=tag)
+        self.canvas.create_text(x + w/2, y + h/2, text=text, fill=fg, font=self.font_btn, tags=tag)
+
+    def UI_update(self):
+        """
+        Main render loop. 
+        Fetches data from game.state and redraws the screen.
+        """
+        self.canvas.delete("all")
+        data = self.game.state.get_data()
+        
+        # 1. New Game Button (Top Left)
+        self.draw_button(40, 40, 140, 50, "New game", COLOR_BTN_NEW_BG, COLOR_BTN_NEW_FG, "btn_new_game")
+
+        # 2. Draw Game Grid (Center)
+        # Grid settings
+        start_x = 220
+        start_y = 50
+        box_size = 65
+        gap = 10
+        
+        progress = data["progress"] # List of strings, e.g. ["TRICK", "AS"]
+        responses = data["response"] # List of lists of ints
+        
+        for row in range(6):
+            # Get the word for this row if it exists
+            word = progress[row] if row < len(progress) else ""
+            
+            # Get colors if this row has been submitted
+            row_colors = []
+            if row < len(responses):
+                # Map backend response to colors
+                # Assuming standard: 2=Green, 1=Yellow, 0=Gray (or similar mapping)
+                # Based on prompt: 
+                # existed & right_position (Green) -> 2
+                # existed & not_right_position (Yellow) -> 1
+                # not_existed (Dark Gray) -> 0
+                for code in responses[row]:
+                    if code == 2: row_colors.append(COLOR_BOX_CORRECT)
+                    elif code == 1: row_colors.append(COLOR_BOX_PRESENT)
+                    else: row_colors.append(COLOR_BOX_ABSENT)
+            
+            for col in range(5):
+                bx = start_x + col * (box_size + gap)
+                by = start_y + row * (box_size + gap)
+                
+                # Determine Color
+                bg_color = COLOR_BOX_EMPTY_BG
+                text_color = COLOR_BOX_EMPTY_FG
+                
+                if row < len(responses):
+                    bg_color = row_colors[col]
+                    text_color = "#FFFFFF" # Submitted text is white
+                
+                # Draw Box
+                self.draw_rounded_rect(bx, by, bx+box_size, by+box_size, 25, fill=bg_color)
+                
+                # Draw Letter
+                char = word[col] if col < len(word) else ""
+                self.canvas.create_text(bx + box_size/2, by + box_size/2, text=char.upper(), fill=text_color, font=self.font_box)
+
+        # 3. Error Message
+        if self.last_message and self.last_message not in ["Next Turn", "Win", "Loss"]:
+             self.canvas.create_text(400, 520 - 15, text=self.last_message, fill=COLOR_ERROR_TEXT, font=self.font_err)
+
+        # 4. Draw Keyboard (Bottom)
+        kb_start_y = 530
+        key_w = 40
+        key_h = 50
+        key_gap = 5
+        
+        # Calculate keyboard key colors based on game history
+        key_colors = {} # char -> color_code
+        for r_idx, resp_row in enumerate(responses):
+            word = progress[r_idx]
+            for c_idx, code in enumerate(resp_row):
+                char = word[c_idx].upper()
+                current_prio = key_colors.get(char, -1)
+                # Priority: Green (2) > Yellow (1) > Gray (0)
+                if code > current_prio:
+                    key_colors[char] = code
+
+        for i, row_keys in enumerate(KEYBOARD_LAYOUT):
+            row_w = len(row_keys) * (key_w + key_gap)
+            start_x_kb = 400 - (row_w / 2) # Center align relative to grid center approx
+            
+            for j, char in enumerate(row_keys):
+                kx = start_x_kb + j * (key_w + key_gap)
+                ky = kb_start_y + i * (key_h + key_gap)
+                
+                # Determine Color
+                k_bg = COLOR_BOX_EMPTY_BG
+                k_fg = COLOR_BOX_EMPTY_FG
+                
+                if char in key_colors:
+                    code = key_colors[char]
+                    k_fg = "#FFFFFF"
+                    if code == 2: k_bg = COLOR_BOX_CORRECT
+                    elif code == 1: k_bg = COLOR_BOX_PRESENT
+                    else: k_bg = COLOR_BOX_ABSENT
+                
+                # Draw Key
+                tag = f"key_{char}"
+                self.draw_rounded_rect(kx, ky, kx+key_w, ky+key_h, 10, fill=k_bg, tags=tag)
+                self.canvas.create_text(kx+key_w/2, ky+key_h/2, text=char, fill=k_fg, font=self.font_key, tags=tag)
+
+        # Special Keys (Backspace, Enter)
+        # Simplified placement for visuals
+        # Enter
+        enter_x = 400 + (len(KEYBOARD_LAYOUT[2]) * (key_w + key_gap))/2 + 10
+        enter_y = kb_start_y + 2 * (key_h + key_gap)
+        self.draw_rounded_rect(enter_x, enter_y, enter_x+70, enter_y+key_h, 10, fill=COLOR_BOX_EMPTY_BG, tags="key_enter")
+        self.canvas.create_text(enter_x+35, enter_y+key_h/2, text="Enter", fill=COLOR_BOX_EMPTY_FG, font=self.font_key, tags="key_enter")
+
+        # Backspace
+        back_x = 400 - (len(KEYBOARD_LAYOUT[2]) * (key_w + key_gap))/2 - 60
+        self.draw_rounded_rect(back_x, enter_y, back_x+50, enter_y+key_h, 10, fill=COLOR_BOX_EMPTY_BG, tags="key_back")
+        self.canvas.create_text(back_x+25, enter_y+key_h/2, text="⌫", fill=COLOR_BOX_EMPTY_FG, font=self.font_key, tags="key_back")
+
+
+        # 5. Right Side Panel (Support)
+        panel_x = 680
+        panel_y = 20
+        panel_w = 300
+        panel_h = 560
+        
+        # Draw Panel Background
+        self.draw_rounded_rect(panel_x, panel_y, panel_x+panel_w, panel_y+panel_h, 25, fill=COLOR_SUPPORT_PANEL)
+
+        if not self.show_support_details:
+            # Just the toggle button
+            btn_y = panel_y + panel_h / 2 - 25
+            self.draw_button(panel_x + 30, btn_y, 240, 50, "SUPPORT", COLOR_SUP_BTN_BG, COLOR_SUP_BTN_FG, "btn_support_toggle", radius=25)
+        else:
+            # Full Interface
+            cx = panel_x + panel_w / 2
+            
+            # Recommendation
+            self.canvas.create_text(cx, panel_y + 40, text="RECOMMENDATION", fill="#FFFFFF", font=self.font_btn)
+            self.draw_button(panel_x + 30, panel_y + 60, 240, 60, self.rec_word, COLOR_SUP_BTN_BG, COLOR_SUP_BTN_FG, "btn_crack", radius=15)
+            
+            # Algorithms
+            self.canvas.create_text(cx, panel_y + 160, text="ALGORITHMS", fill="#FFFFFF", font=self.font_btn)
+            algos = ["DFS", "BFS", "UCS", "A*"]
+            
+            # 2x2 Grid for buttons
+            ax_start = panel_x + 30
+            ay_start = panel_y + 190
+            aw, ah = 110, 55
+            gap_a = 20
+            
+            for i, algo in enumerate(algos):
+                r = i // 2
+                c = i % 2
+                ax = ax_start + c*(aw+gap_a)
+                ay = ay_start + r*(ah+gap_a)
+                
+                bg = COLOR_SUP_BTN_ACTIVE_BG if algo == self.selected_algo else COLOR_SUP_BTN_BG
+                fg = COLOR_SUP_BTN_ACTIVE_FG if algo == self.selected_algo else COLOR_SUP_BTN_FG
+                
+                self.draw_button(ax, ay, aw, ah, algo, bg, fg, f"algo_{algo}", radius=15)
+
+            # Statistics
+            stats_y = panel_y + 340
+            self.canvas.create_text(cx, stats_y, text="STATISTICS", fill="#FFFFFF", font=self.font_btn)
+            
+            # Run time
+            self.canvas.create_text(panel_x+30, stats_y + 40, text="Run time (ms)", fill="#FFFFFF", font=self.font_btn, anchor="w")
+            self.draw_rounded_rect(panel_x+30, stats_y+60, panel_x+270, stats_y+115, 15, fill=COLOR_SUP_INPUT_BG)
+            # Placeholder text would go here
+            
+            # Space used
+            self.canvas.create_text(panel_x+30, stats_y + 130, text="Space used (MB)", fill="#FFFFFF", font=self.font_btn, anchor="w")
+            self.draw_rounded_rect(panel_x+30, stats_y+150, panel_x+270, stats_y+205, 15, fill=COLOR_SUP_INPUT_BG)
+
+        # 6. Win/Loss Overlay
+        if data["is_game_over"]:
+            self.draw_game_over(data["progress"][-1] == data["answer"])
+
+    def draw_game_over(self, is_win):
+        # Semi-transparent Overlay (simulated with stipple or solid fill blocking clicks)
+        # Using a solid rectangle centered to block view as per "Blur" effect request
+        # Actually, Tkinter doesn't do blur. We will draw a semi-transparent box or just a solid box.
+        # Based on instruction: "print out YOU WIN/LOSE and New_game button below"
+        
+        # Color based on result
+        msg = "YOU WIN" if is_win else "YOU LOSE"
+        color = COLOR_BTN_NEW_BG if is_win else COLOR_BOX_ABSENT
+        
+        # Overlay covering grid + keyboard
+        self.canvas.create_rectangle(0, 0, 1200, 700, fill="#FFFFFF", stipple="gray50")
+        
+        cx, cy = 550, 350 # Center of Game Area
+        
+        self.canvas.create_text(cx, cy - 30, text=msg, fill=color, font=("Helvetica", 40, "bold"))
+        
+        # Re-draw new game button in center for this screen? 
+        # The prompt says "and the New_game button below".
+        self.draw_button(cx - 70, cy + 20, 140, 50, "New game", COLOR_BTN_NEW_BG, COLOR_BTN_NEW_FG, "btn_new_game_over")
+
+    # --- Interaction Handlers ---
+
+    def handle_keypress(self, event):
+        if self.game.state.get_data()["is_game_over"]:
             return
 
-        self.target_word = random.choice(self.word_list)
-        self.attempt = 0
-        self.col = 0
-        self.grid_letters = [["" for _ in range(COLS)] for _ in range(ROWS)]
-        self.labels = [[None for _ in range(COLS)] for _ in range(ROWS)]
-        self.key_buttons = {}
-        self.warn_after_id = None
-        self.game_over = False
+        key = event.keysym.upper()
+        if len(key) == 1 and key.isalpha():
+            self.game.add_letter(key)
+        elif key == "BACKSPACE":
+            self.game.remove_letter()
+        elif key == "RETURN":
+            self.submit_action()
+        
+        self.UI_update()
 
-        self.create_ui()
-        root.bind("<Key>", self.on_key)  # physical keyboard
-        # debug: print("Target:", self.target_word)
-
-    def create_ui(self):
-        top_frame = tk.Frame(self.root, bg=BG)
-        top_frame.pack(pady=12)
-
-        board = tk.Frame(top_frame, bg=BG)
-        board.pack()
-
-        # create 6x5 tiles
-        for r in range(ROWS):
-            row_frame = tk.Frame(board, bg=BG)
-            row_frame.pack(padx=2, pady=2)
-            for c in range(COLS):
-                lbl = tk.Label(row_frame, text="", width=4, height=2,
-                               font=("Helvetica", 24, "bold"),
-                               bg=EMPTY_TILE_BG, fg=TEXT_COLOR, bd=2, relief="solid")
-                lbl.grid(row=r, column=c, padx=6, pady=6)
-                self.labels[r][c] = lbl
-
-        # message/warning label
-        self.msg = tk.Label(self.root, text="", fg="white", bg=BG, font=("Helvetica", 12, "bold"))
-        self.msg.pack(pady=6)
-
-        # keyboard frame
-        kb_frame = tk.Frame(self.root, bg=BG)
-        kb_frame.pack(pady=6)
-
-        rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
-        for i, row in enumerate(rows):
-            rowf = tk.Frame(kb_frame, bg=BG)
-            rowf.pack(pady=4)
-            if i == 2:
-                # add backspace button
-                back = tk.Button(rowf, text="⌫", width=5, height=2, command=self.backspace,
-                                 bg=KEY_BG, fg=TEXT_COLOR, bd=0)
-                back.pack(side="left", padx=3)
-            for ch in row:
-                btn = tk.Button(rowf, text=ch.upper(), width=4, height=2,
-                                command=lambda ch=ch: self.add_letter(ch),
-                                bg=KEY_BG, fg=TEXT_COLOR, bd=0)
-                btn.pack(side="left", padx=3)
-                self.key_buttons[ch] = btn
-            if i == 0:
-                # add Enter on right of first row
-                enter = tk.Button(rowf, text="Enter", width=6, height=2, command=self.submit_word,
-                                  bg=KEY_BG, fg=TEXT_COLOR, bd=0)
-                enter.pack(side="left", padx=6)
-
-        # Reset button
-        ctrl_frame = tk.Frame(self.root, bg=BG)
-        ctrl_frame.pack(pady=8)
-        reset_btn = tk.Button(ctrl_frame, text="Reset", command=self.reset_game, bg="#2b2b2b", fg=TEXT_COLOR)
-        reset_btn.pack()
-
-    # --------------------- Input Handling ---------------------
-    def on_key(self, event):
-        if self.game_over:
-            return
-        key = event.keysym.lower()
-        # cancel any existing warning timer if user types anything
-        if self.warn_after_id:
-            self.root.after_cancel(self.warn_after_id)
-            self.warn_after_id = None
-            self.clear_message()
-        if key == "backspace":
-            self.backspace()
-        elif key == "return":
-            self.submit_word()
-        elif len(key) == 1 and key in string.ascii_letters:
-            self.add_letter(key)
-
-    def add_letter(self, ch):
-        if self.game_over:
-            return
-        ch = ch.lower()
-        if self.col >= COLS:
-            # do not accept more than 5 letters for the row
-            return
-        # place letter
-        self.grid_letters[self.attempt][self.col] = ch
-        lbl = self.labels[self.attempt][self.col]
-        lbl.config(text=ch.upper())
-        self.col += 1
-
-    def backspace(self):
-        if self.game_over:
-            return
-        if self.col <= 0:
-            return
-        self.col -= 1
-        self.grid_letters[self.attempt][self.col] = ""
-        lbl = self.labels[self.attempt][self.col]
-        lbl.config(text="")
-        # Restore tile bg in case it was colored earlier by mistake
-        lbl.config(bg=EMPTY_TILE_BG)
-
-    # --------------------- Message Helpers ---------------------
-    def show_message(self, text, duration_ms=None):
-        self.msg.config(text=text)
-        if duration_ms:
-            if self.warn_after_id:
-                self.root.after_cancel(self.warn_after_id)
-            self.warn_after_id = self.root.after(duration_ms, self.clear_message)
-
-    def clear_message(self):
-        self.msg.config(text="")
-        self.warn_after_id = None
-
-    # --------------------- Word Checking / Coloring ---------------------
-    def submit_word(self):
-        if self.game_over:
-            return
-        current = "".join(self.grid_letters[self.attempt]).lower()
-        if len(current) < COLS:
-            self.show_message("Too short")
-            # auto-clear "Too short" after 1s as well for good UX
-            if self.warn_after_id:
-                self.root.after_cancel(self.warn_after_id)
-            self.warn_after_id = self.root.after(1000, self.clear_message)
+    def handle_click(self, event):
+        x, y = event.x, event.y
+        
+        # Check Canvas Tags at click location
+        items = self.canvas.find_closest(x, y)
+        tags = self.canvas.gettags(items[0])
+        
+        if not tags: return
+        
+        tag = tags[0]
+        
+        # 1. New Game
+        if "btn_new_game" in tag or "btn_new_game_over" in tag:
+            self.game.new_game()
+            self.last_message = ""
+            self.show_support_details = False
+            self.UI_update()
             return
 
-        if current not in self.word_list:
-            # Word not in list
-            self.show_message("Word not found", duration_ms=1000)
+        # 2. Support Toggle
+        if "btn_support_toggle" in tag:
+            self.show_support_details = True
+            self.UI_update()
+            return
+            
+        # 3. Algorithms Selection
+        if tag.startswith("algo_"):
+            algo_name = tag.split("_")[1]
+            if algo_name == "A*": algo_name = "A*" # fix split issue if any
+            self.selected_algo = algo_name
+            self.UI_update()
             return
 
-        # Check letters with Wordle frequency rules
-        target = self.target_word
-        result_colors = [GREY] * COLS
-        t_counts = {}
-        # count letters in target
-        for ch in target:
-            t_counts[ch] = t_counts.get(ch, 0) + 1
-        # first pass: greens
-        for i, ch in enumerate(current):
-            if target[i] == ch:
-                result_colors[i] = GREEN
-                t_counts[ch] -= 1
-        # second pass: yellows where counts remain
-        for i, ch in enumerate(current):
-            if result_colors[i] == GREEN:
-                continue
-            if ch in t_counts and t_counts[ch] > 0:
-                result_colors[i] = YELLOW
-                t_counts[ch] -= 1
-            else:
-                result_colors[i] = DARK_GREY
+        # 4. Virtual Keyboard
+        if self.game.state.get_data()["is_game_over"]: return
 
-        # apply colors to tiles and update keyboard colors (never downgrade green/yellow)
-        for i, color in enumerate(result_colors):
-            lbl = self.labels[self.attempt][i]
-            lbl.config(bg=color, fg=TEXT_COLOR)
-            letter = current[i]
-            # update on-screen key
-            if letter in self.key_buttons:
-                btn = self.key_buttons[letter]
-                # Promote key color: green > yellow > grey > default
-                cur = btn.cget("bg")
-                priority = {GREEN:3, YELLOW:2, DARK_GREY:1, KEY_BG:0, KEY_ACTIVE:0}
-                if priority.get(color,0) > priority.get(cur,0):
-                    btn.config(bg=color)
+        if tag.startswith("key_"):
+            val = tag.split("_")[1]
+            if val == "enter":
+                self.submit_action()
+            elif val == "back":
+                self.game.remove_letter()
+            elif len(val) == 1:
+                self.game.add_letter(val)
+            self.UI_update()
 
-        # check win
-        if current == target:
-            self.show_message("You won! 🏆")
-            self.game_over = True
-            return
+    def submit_action(self):
+        # Call backend submit
+        result = self.game.submit()
+        # Map result to message
+        if result == "Not in Word List":
+            self.last_message = "The word does not exist!"
+        elif result == "Too Short":
+            self.last_message = "Not enough letters"
+        elif result in ["Win", "Loss"]:
+            self.last_message = result # UI handles game over flag
+        else:
+            self.last_message = ""
 
-        # next attempt
-        self.attempt += 1
-        self.col = 0
-        if self.attempt >= ROWS:
-            self.game_over = True
-            self.show_message(f"The word is: {self.target_word.upper()}")
-
-    # --------------------- Reset ---------------------
-    def reset_game(self):
-        self.target_word = random.choice(self.word_list)
-        self.attempt = 0
-        self.col = 0
-        self.grid_letters = [["" for _ in range(COLS)] for _ in range(ROWS)]
-        self.game_over = False
-        self.clear_message()
-        # reset tiles
-        for r in range(ROWS):
-            for c in range(COLS):
-                lbl = self.labels[r][c]
-                lbl.config(text="", bg=EMPTY_TILE_BG, fg=TEXT_COLOR)
-        # reset keys
-        for k, btn in self.key_buttons.items():
-            btn.config(bg=KEY_BG)
-        # debug: print("New target:", self.target_word)
-
-# --------------------- Run ---------------------
 if __name__ == "__main__":
     root = tk.Tk()
-    app = WordleApp(root)
+    app = WordleUI(root)
     root.mainloop()
