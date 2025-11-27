@@ -100,7 +100,11 @@ class Game:
         if len(guess) != 5:
             return "Too Short"
         if guess not in self.answers_list:
+            self.state.progress[-1] = ""  # Clear the invalid guess
             return "Not in Word List"
+        if guess in self.state.progress[:-1]:
+            self.state.progress[-1] = ""  # Clear the invalid guess
+            return "Already Guessed"
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)
         response = wordHandle.get_response(guess, self.state.answer)
@@ -179,7 +183,7 @@ class Game:
             for char in user_input:
                 self.add_letter(char)
             
-            result = self.submit()
+            result = self.submit_guess()
             print(f"Result: {result}")
             print(f"Board: {self.state.progress}")
             print(f"Colors: {self.state.response}")
