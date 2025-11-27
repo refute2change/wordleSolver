@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import font
 import game
 import math
+import bfs_new
 
 # --- Configuration & Colors ---
 COLOR_BG_MAIN = "#E3C08D"  # Matches the general tan background
@@ -35,6 +36,7 @@ class WordleUI:
         self.root.geometry("1100x700")
         self.root.configure(bg=COLOR_BG_MAIN)
         self.root.resizable(False, False)
+        # self.strategy = {}
 
         # Initialize Game Backend
         self.game = game.Game()
@@ -266,7 +268,7 @@ class WordleUI:
 
         # 6. Win/Loss Overlay
         if data["is_game_over"]:
-            self.draw_game_over(data["progress"][-1] == data["answer"])
+            self.draw_game_over(False if len(data["response"]) == 0 else (len(data["response"]) != 6 and data["response"][-1] == [2,2,2,2,2]))
 
     def draw_game_over(self, is_win):
         # Semi-transparent Overlay (simulated with stipple or solid fill blocking clicks)
@@ -302,6 +304,7 @@ class WordleUI:
             self.game.remove_letter()
         elif key == "RETURN":
             self.submit_action()
+            # print(bfs_new.use_strategy_map(self.game.response, self.strategy))
         
         self.UI_update()
 
@@ -345,6 +348,7 @@ class WordleUI:
             val = tag.split("_")[1]
             if val == "enter":
                 self.submit_action()
+                # print(bfs_new.use_strategy_map(self.game.response, self.strategy))
             elif val == "back":
                 self.game.remove_letter()
             elif len(val) == 1:

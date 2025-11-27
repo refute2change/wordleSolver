@@ -19,7 +19,6 @@ class State:
         return {
             "progress": self.progress,
             "response": self.response,
-            "answer": self.answer,
             "is_game_over": False if len(self.response) == 0 else (self.response[-1] == [2, 2, 2, 2, 2] or len(self.response) == 6)
         }
 

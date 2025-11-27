@@ -142,7 +142,7 @@ class Game:
         if idx >= 6: return
 
         self.state.progress[-1] = guess
-        self.submit_guess()
+        return self.submit_guess()
 
     # --- CLI Debugging / Play Tool ---
     def play(self):
