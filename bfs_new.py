@@ -191,8 +191,13 @@ def use_strategy_map(game_state, strategy_map):
     game_progress = game_state["progress"]
     game_responses = game_state["response"]
     if strategy_map is None:
+        if len(game_responses) == 0:
+            return ""
         strategy_map.update(bfs_solve_by_state(start_word=game_progress[0]))
-    if len(game_responses) >= 1 and game_progress[0] != get_starting_word(strategy_map):
+    print(len(game_responses))
+    if len(game_responses) == 0:
+        return get_starting_word(strategy_map)
+    elif game_progress[0] != get_starting_word(strategy_map):
         strategy_map.update(bfs_solve_by_state(start_word=game_progress[0]))
     # 1. Filter candidates based on history
     current_indices = list(range(len(ANSWER_WORDS)))
