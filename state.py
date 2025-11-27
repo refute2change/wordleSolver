@@ -26,3 +26,7 @@ class State:
     # Helper to just get the current active row index
     def current_row_index(self):
         return len(self.response)
+
+    def unwind_guess(self):
+        if len(self.progress) - len(self.response) == 1:
+            self.progress[-1] = ""
