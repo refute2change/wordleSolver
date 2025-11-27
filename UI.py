@@ -36,7 +36,7 @@ class WordleUI:
         self.root.geometry("1100x700")
         self.root.configure(bg=COLOR_BG_MAIN)
         self.root.resizable(False, False)
-        # self.strategy = {}
+        self.strategy = {}
 
         # Initialize Game Backend
         self.game = game.Game()
@@ -304,7 +304,7 @@ class WordleUI:
             self.game.remove_letter()
         elif key == "RETURN":
             self.submit_action()
-            # print(bfs_new.use_strategy_map(self.game.response, self.strategy))
+            print(bfs_new.use_strategy_map(self.game.response, self.strategy))
         
         self.UI_update()
 
@@ -348,7 +348,7 @@ class WordleUI:
             val = tag.split("_")[1]
             if val == "enter":
                 self.submit_action()
-                # print(bfs_new.use_strategy_map(self.game.response, self.strategy))
+                print(bfs_new.use_strategy_map(self.game.response, self.strategy))
             elif val == "back":
                 self.game.remove_letter()
             elif len(val) == 1:

@@ -44,16 +44,12 @@ def bfs_solve_by_state(start_word: str = None):
     This merges duplicate branches (Transpositions), making it much faster.
     """
     # Queue stores: (list_of_candidate_INDICES, depth)
-    # We DO NOT store history strings anymore, because multiple histories 
-    # can point to this same state.
     queue = collections.deque()
     
     # The Result Map: { tuple(candidate_indices) : best_word_index }
-    # This is our "Strategy Book"
     strategy_map = {}
     
     # Visited Set to detect Transpositions
-    # Stores: tuple(candidate_indices)
     visited_states = set()
 
     # Initial State: All answers
@@ -61,10 +57,7 @@ def bfs_solve_by_state(start_word: str = None):
     
     # Handle Forced Start
     if start_word:
-        # We manually process the start to force the first move
         start_idx = ALLOWED_MAP[start_word]
-        
-        # We assume the "All Candidates" state maps to the start_word
         initial_tuple = tuple(initial_indices)
         strategy_map[initial_tuple] = start_word
         visited_states.add(initial_tuple)
@@ -79,7 +72,6 @@ def bfs_solve_by_state(start_word: str = None):
             if len(subset) > 0:
                 queue.append((subset, 1))
     else:
-        # Standard: Start from scratch
         queue.append((initial_indices, 0))
 
     start_time = time.time()
@@ -92,10 +84,9 @@ def bfs_solve_by_state(start_word: str = None):
         current_indices, depth = queue.popleft()
         
         # 1. CREATE STATE ID
-        # Converting list to tuple makes it hashable for sets/dicts
         state_id = tuple(current_indices)
 
-        # 2. CHECK VISITED (Transposition Table)
+        # 2. CHECK VISITED
         if state_id in visited_states:
             skipped_nodes += 1
             continue
@@ -103,20 +94,29 @@ def bfs_solve_by_state(start_word: str = None):
 
         # 3. BASE CASE: Solved
         if len(current_indices) == 1:
-            # The strategy for a single word is just to guess that word
             strategy_map[state_id] = ANSWER_WORDS[current_indices[0]]
             continue
         
         if depth >= 6: continue
 
-        # 4. MINIMAX LOGIC (Same as before)
+        # 4. MINIMAX LOGIC
         best_idx = -1
         min_worst = float('inf')
         best_groups = {}
 
-        if len(current_indices) < 20:
+        # --- CRITICAL FIX: TRAP AVOIDANCE ---
+        # Previous logic restricted search to candidates if len < 20.
+        # This causes the bot to fail in "Traps" (e.g., _OUND, _IGHT) because 
+        # it refuses to use "burner words" (words that aren't the answer but split the list).
+        
+        # New Logic:
+        # If it is the LAST guess (Depth 5), we MUST pick a candidate to try and win.
+        # Otherwise, we ALWAYS search the full dictionary to find the best information.
+        if depth == 5:
             search_indices = [ALLOWED_MAP[ANSWER_WORDS[i]] for i in current_indices]
         else:
+            # We search all 12,000 words. Since matrix lookup is fast, this is fine
+            # even for mid-sized groups.
             search_indices = range(len(ALLOWED_WORDS))
 
         for guess_idx in search_indices:
@@ -133,6 +133,7 @@ def bfs_solve_by_state(start_word: str = None):
                 min_worst = worst
                 best_idx = guess_idx
                 best_groups = groups
+                # Pruning
                 if min_worst == 1: break
         
         if best_idx == -1: continue
@@ -143,7 +144,7 @@ def bfs_solve_by_state(start_word: str = None):
 
         # 6. ENQUEUE CHILDREN
         for pat_int, subset in best_groups.items():
-            if pat_int == 242: continue # Win state doesn't need solving
+            if pat_int == 242: continue 
             queue.append((subset, depth + 1))
             
         nodes_processed += 1
@@ -224,29 +225,65 @@ def use_strategy_map(game_state, strategy_map):
 
 
 if __name__ == "__main__":
-    # Generate the strategy
+    strategy = bfs_solve_by_state(start_word="salet")
+    
+    print(f"Strategy generated with {len(strategy)} unique states.")
+    
+    out_path = os.path.dirname(os.path.abspath(__file__)) + "\\decision_tree\\bfs_state_strategy.pkl"
+    with open(out_path, "wb") as f:
+        pickle.dump(strategy, f)
+    print(f"Saved binary strategy to {out_path}")
     strategy = load_strategy()
     g = game.Game()
     g.new_game()
-    
-    # with open("E:\Coding Things\wordleSolver\answers\answers.txt", "r") as f:
-    #     possible_answers = f.read().splitlines()
-    
+    success = 0
+    fail = 0
+    dead_list = []
 
-    while 1:
-        state = g.response
-        next_word = use_strategy_map(state, strategy)
-        if next_word is None:
-            print("No strategy found for current state.")
-            break
-        print(f"Next guess should be: {next_word}")
-        res = g.add_guess(next_word)
-        state = g.response
-        print(f"Progress: {state['progress']}")
-        print(f"Response: {state['response']}")
-        if state["is_game_over"]:
-            if res == "Win":
-                print(f"The solver won in {len(state['response'])} moves!")
-            else:
-                print("The solver lost.")
-            break
+    with open("E:\\Coding Things\wordleSolver\\answers\\answers.txt", "r") as f:
+        possible_answers = f.read().splitlines()
+    
+    for answer in possible_answers:
+        g.new_game(answer = answer)
+        while 1:
+            state = g.response
+            next_word = use_strategy_map(state, strategy)
+            if next_word is None:
+                # print("No strategy found for current state.")
+                break
+            # print(f"Next guess should be: {next_word}")
+            res = g.add_guess(next_word)
+            state = g.response
+            # print(f"Progress: {state['progress']}")
+            # print(f"Response: {state['response']}")
+            if state["is_game_over"]:
+                if res == "Win":
+                    success += 1
+                    # print(f"The solver won in {len(state['response'])} moves!")
+                else:
+                    fail += 1
+                    dead_list.append(answer)
+                    # print("The solver lost.")
+                break
+    
+    print(success, fail)
+    for word in dead_list:
+        print(f"Failed case for {word}.")
+        g.new_game(answer = word)
+        while 1:
+            state = g.response
+            next_word = use_strategy_map(state, strategy)
+            if next_word is None:
+                # print("No strategy found for current state.")
+                break
+            print(f"Next guess should be: {next_word}")
+            res = g.add_guess(next_word)
+            state = g.response
+            print(f"Progress: {state['progress']}")
+            print(f"Response: {state['response']}")
+            if state["is_game_over"]:
+                if res == "Win":
+                    print(f"The solver won in {len(state['response'])} moves!")
+                else:
+                    print("The solver lost.")
+                break
