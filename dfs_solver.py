@@ -1,5 +1,6 @@
 from typing import List
 from time import perf_counter
+from collections import Counter
 import os
 import csv
 # import game
@@ -7,13 +8,11 @@ import wordHandle
 
 # test.py
 
-cnt = 0
 longest_path = []
 words = []
 final_words = []
 hsh = ""
 data = []
-ma = 0
 
 def read_wordle_words(path: str) -> List[str]:
     """
@@ -44,202 +43,112 @@ def gen_string_from_mask(mask: int) -> str:
         str = "B" + str
     return str
 
-def check_wordle_guess(guess, target):
-    # 1. Convert to lists for mutability
-    guess = list(guess.upper())
-    target = list(target.upper())
+def dfs(d: int, ranged_words: List[str]) -> str:
+    """
+    Counts the frequency of characters at index 'd' for all words in the list
+    and returns the most frequent character.
+    """
+    #0. Base case: stop if depth reaches 5 or no words left
+    if (d==5) or (len(ranged_words) == 0):
+        return ""
     
-    # Result array: default to Gray
-    result = "BBBBB"
+    # 1. Collect all characters at position 'd'
+    # We add a check (d < len(word)) to prevent IndexError if words have different lengths
+    characters_at_d = [word[d] for word in ranged_words if d < len(word)]
     
-    # Frequency map of the TARGET word
-    target_counts = {}
-    for char in target:
-        target_counts[char] = target_counts.get(char, 0) + 1
+    # 2. Count the frequency of each character
+    # Example: Counter({'e': 5, 'a': 2, 's': 1})
+    frequency_map = Counter(characters_at_d)
+    
+    # Debug: Print the full counts to the console so you can see the data
+    # print(f"Frequencies at index {d}: {dict(frequency_map)}")
+    
+    # 3. Handle empty results (e.g., if the list is empty or index is out of bounds)
+    if not frequency_map:
+        return ""
         
-    # --- PASS 1: Find GREENs ---
-    for i in range(5):
-        if guess[i] == target[i]:
-            result = result[:i] + 'G' + result[i+1:]
-            target_counts[guess[i]] -= 1
-            
-    # --- PASS 2: Find YELLOWs ---
-    for i in range(5):
-        # Only check if it wasn't already marked GREEN
-        if result[i] == 'B':
-            letter = guess[i]
-            # If the letter exists in target and we haven't used up all instances
-            if target_counts.get(letter, 0) > 0:
-                result = result[:i] + 'Y' + result[i+1:]
-                target_counts[letter] -= 1
+    # 4. Return the character with the highest frequency
+    # most_common(1) returns a list like [('e', 5)]
+    most_frequent_char = frequency_map.most_common(1)[0][0]
+    next_ranged_words = []
+    for word in ranged_words:
+        if word[d] == most_frequent_char:
+            next_ranged_words.append(word)
 
-    return result
+    return most_frequent_char+dfs(d+1, next_ranged_words)
 
-def max_depth(last_state, ranged_words, depth, path) -> tuple:
-    """
-    Return a tuple `(max_depth, best_path)` for the Wordle solver's decision tree.
-    `best_path` is a list of guesses (and final solution when applicable) that
-    lead to the deepest resolution discovered in `ranged_words`.
-    """
-    global ma
+
+def get_next_guess(game_state: dict) -> str:
     global words
-    global cnt
-    global longest_path
-    global data
-    global hsh
-    # Base case: no more words to consider
-    if ranged_words == [] or len(ranged_words) == 1:
-        candidate_path = path.copy()
-        if len(ranged_words) == 1:
-            cnt += depth
-            # append final solved word for a complete path
-            candidate_path.append(ranged_words[0])
-            data.append([hsh, last_state, ranged_words[0]])
-            hsh += ranged_words[0]+"GGGGG"
-            data.append([hsh, "GGGGG", "OKAY"])
-            hsh = hsh[:-10]
-        # update global maximum depth + path
-        if depth > ma:
-            ma = depth
-            longest_path = candidate_path.copy()
-        return depth, candidate_path
-    """
-    if len(ranged_words) == 1:
-        print(f"Solved! The word is {ranged_words[0]}. Path taken: {path + [ranged_words[0]]}")
-        return
-    if len(ranged_words) == 0:
-        print("No possible words left!")
-        return
-    """
-    # Try each word as a guess and see which gives the best depth, with minimum largest partition
-    min_size = 30000
-    ans = 0
-    word_used = ""
-    ind = {}
-    for mask in range(0, 243):  # 3^5 = 243 possible feedback patterns
-        str = gen_string_from_mask(mask)
-        ind[str] = mask
-    """
-    if depth == 0:
-        word_used = "serai"
+    global final_words
+    ranged_words = words.copy()
+    ranged_final_words = final_words.copy()
+    guesses = game_state["progress"]
+    responses = game_state["response"]
+    if len(guesses) == 0:
+        for word in words:
+            ranged_words.append(word)
+        for word in final_words:
+            ranged_final_words.append(word)
     else:
-    """
-    for guess in words:
-        s = []
-        flag = True
-        for mask in range(0, 243):
-            s.append([])
-        for target in ranged_words:
-            str = wordHandle.response_to_str(wordHandle.get_response(guess, target))
-            num = ind[str]
-            if (len(s[num]) == min_size):
-                flag = False
-                break  # No need to continue, this guess is worse than the best so far
-            s[num].append(target)
-        if not flag:
-            continue
-        maxd = 0
-        for lst in s:
-            if len(lst) > maxd:
-                maxd = len(lst)
-        if maxd < min_size:
-            min_size = maxd
-            word_used = guess
-            # print(f"New best word: {word_used} with max partition size {min_size} / total size of {len(ranged_words)} at depth {depth}")
-        if maxd == 1:
-            break  # Can't do better than this
-
-    # print(f"Using word {word_used} at depth {depth}")
-    data.append([hsh, last_state, word_used])
-    hsh += word_used
-    s = []
-    for mask in range(0, 243):
-        s.append([])
-    for target in ranged_words:
-        str = wordHandle.response_to_str(wordHandle.get_response(word_used, target))
-        s[ind[str]].append(target)
-
-    best_path_for_node = path.copy()
-    for mask in range(0, 243):
-        path.append(word_used)
-        hsh += gen_string_from_mask(mask)
-        if s[mask] != []:
-            if mask == ind["GGGGG"]:
-                data.append([hsh, "GGGGG", "OKAY"])
-                cnt += depth
-                if depth > ans:
-                    ans = depth
-                    # record current path (no further recursion for mask==0)
-                    best_path_for_node = path.copy()
-            else:
-                d, child_path = max_depth(gen_string_from_mask(mask), s[mask], depth + 1, path)
-                if d > ans:
-                    ans = d
-                    best_path_for_node = child_path.copy()
-        path.pop()
-        hsh = hsh[:-5]
-    hsh = hsh[:-5]
-    return ans, best_path_for_node
+        for i in range(len(guesses)):
+            temp_final_words = []
+            temp_words = []
+            guess = guesses[i]
+            response = responses[i]
+            for word in ranged_final_words:
+                if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
+                    continue
+                temp_final_words.append(word)
+            for word in ranged_words:
+                if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
+                    continue
+                temp_words.append(word)
+            ranged_final_words = temp_final_words.copy()
+            ranged_words = temp_words.copy()
+    if (len(ranged_final_words) == 1 or len(guesses) >= 5):
+        return ranged_final_words[0] # only one possible final word or the guess is the last one    
+    else:
+        return dfs(0, ranged_words)
     
 if __name__ == "__main__":
     first_path = os.path.dirname(os.path.abspath(__file__))
-    try:
-        with open(first_path+"\\decision_tree\\dfs_decision_tree.csv", "r") as f:
-            pass
-    except FileNotFoundError:
-        header = ["current_progress","state","next_word"]
-        t0 = perf_counter()
-        words = read_wordle_words("allowed_words.txt")
-        final_words = read_wordle_words("answers.txt")
-        # print(f"Loaded {len(words)} words.")
-        # print first 10 as a quick check
-        ans, best_path = max_depth("", final_words, 1, [])
-        print(f"Best max depth with this strategy: {ans}")
-        print(f"Longest path (returned): {best_path}")
-        print(f"Longest path (global): {longest_path}")
-        t1 = perf_counter()
-        print(f"Time taken: {t1 - t0} seconds")
-        print(f"Average depth for single-word resolutions: {cnt / len(final_words)}")
-        with open(first_path + "\\decision_tree\\dfs_decision_tree.csv", "w") as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
-            writer.writerows(data)
-        # print("CSV file write successfully.")
-    decision_tree = {}
-    with open(first_path+"\\decision_tree\\dfs_decision_tree.csv", "r") as f:
-        csv_reader = csv.DictReader(f)
-        for row in csv_reader:
-            current_word = row["current_progress"]
-            state = row["state"]
-            next_word = row["next_word"]
-            if current_word not in decision_tree:
-                decision_tree[current_word] = {}
-            decision_tree[current_word][state] = next_word
-    state = ""
-    guess = 0
-    # g = game.Game()
-    # g.new_game()
-    while guess < 6:
-        if state not in decision_tree[hsh]:
-            print(f"{state} not consist in the decision tree")
-            # print(f"Word we need to find is {g.get_answer()}")
-        else:
-            guess_word = decision_tree[hsh][state]
-        # g.add_guess(guess_word)
-        guess += 1
-        print(f"Guess {guess}: {guess_word}")
-        # response = g.response["response"]
-        # state = wordHandle.response_to_str(response[-1])
-        state = input("Enter the response string (e.g., BYGBB): ").strip().upper() 
-        # print(f"Result state: {state}")
-        hsh+=guess_word+state
-        if state == "GGGGG":
-            break
-        # if g.stop:
-            # break
-    if state == "GGGGG":
-        print(f"Solved in {guess}!")
-    else:
-        print(f"Fail to solve :(")
-    
+    t0 = perf_counter()
+    words = read_wordle_words("allowed_words.txt")
+    final_words = read_wordle_words("answers.txt")
+    longest_path = []
+    # print(f"Loaded {len(words)} words.")
+    # print first 10 as a quick check
+    game_state = {
+        "progress": [],
+        "response": []
+    }
+    max_depth = 0
+    s = 0
+    cnt = 0
+    for word in final_words:
+        game_state = {
+            "progress": [],
+            "response": []
+        }
+        guess = get_next_guess(game_state)
+        while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
+            guess = get_next_guess(game_state)
+            response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
+            game_state["progress"].append(guess)
+            game_state["response"].append(response)
+        if max_depth <  len(game_state["progress"]):
+            max_depth = len(game_state["progress"])
+            longest_path = game_state["progress"].copy()
+        s += len(game_state["progress"])
+        if (len(game_state["progress"]) <= 6):
+            cnt += 1
+    # if len(game_state["response"]) == 5 and game_state["response"][-1] != "GGGGG":
+    #    print("Sorry, you've used all your guesses and you're a failed human.")
+    t1 = perf_counter()
+    print(f"Time taken per word: {(t1 - t0)/len(final_words)} seconds")
+    print(f"Average depth for single-word resolutions: {s / len(final_words)}")
+    print(f"Maximum depth for single-word resolutions: {max_depth}")
+    print(f"Longest path: {longest_path}")
+    print(f"Number of words solved within 6 guesses: {cnt} out of {len(final_words)}, with success rate {cnt/len(final_words)*100:.2f}%")
 
