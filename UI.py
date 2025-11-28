@@ -81,12 +81,17 @@ class WordleUI:
         """
         def task():
             # This is the slow part (regenerating the tree if off-script)
-            self.rec_word = bfs_new.use_strategy_map(self.game.response, self.strategy).upper()
+            self.rec_word = bfs_new.use_strategy_map(self.game.response, self.strategy)
+            if self.rec_word is None:
+                self.rec_word = ""
+            else:
+                self.rec_word = self.rec_word.upper()
             
             # Since we are in a thread, we use print() for now.
             # If you want to update the UI (e.g. self.rec_word), you must use 
             # self.root.after() to schedule it on the main thread.
             print(f"Bot Suggestion: {self.rec_word}")
+            self.UI_update()
             
             # Example of how to update UI safely from thread:
             # self.root.after(0, lambda: self.update_recommendation(suggestion))
@@ -95,7 +100,6 @@ class WordleUI:
         # daemon=True ensures the thread dies if the main app is closed
         thread = threading.Thread(target=task, daemon=True)
         thread.start()
-        self.UI_update()
 
     def draw_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
         points = [
