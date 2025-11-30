@@ -49,11 +49,14 @@ def get_next_guess(game_state: dict) -> str:
     global words
     global final_words
     global pattern_matrix
-    global precompute_log
-    ranged_final_words = final_words.copy()
+    global precompute_lo
     guesses = game_state["progress"]
     responses = game_state["response"]
 
+    if len(guesses) == 0:
+        return "soare"  # Best known first guess 
+
+    ranged_final_words = final_words.copy()
     for i in range(len(guesses)):
         guess = guesses[i]
         response = responses[i]
@@ -114,10 +117,7 @@ if __name__ == "__main__":
             "response": []
         }
         while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
-            if (len(game_state["progress"]) == 0):
-                guess = "soare" # Starting with best known first guess
-            else:
-                guess = get_next_guess(game_state)
+            guess = get_next_guess(game_state)
             response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
             game_state["progress"].append(guess)
             game_state["response"].append(response)
