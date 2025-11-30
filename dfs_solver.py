@@ -85,27 +85,21 @@ def get_next_guess(game_state: dict) -> str:
     ranged_final_words = final_words.copy()
     guesses = game_state["progress"]
     responses = game_state["response"]
-    if len(guesses) == 0:
-        for word in words:
-            ranged_words.append(word)
-        for word in final_words:
-            ranged_final_words.append(word)
-    else:
-        for i in range(len(guesses)):
-            temp_final_words = []
-            temp_words = []
-            guess = guesses[i]
-            response = responses[i]
-            for word in ranged_final_words:
-                if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
-                    continue
-                temp_final_words.append(word)
-            for word in ranged_words:
-                if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
-                    continue
-                temp_words.append(word)
-            ranged_final_words = temp_final_words.copy()
-            ranged_words = temp_words.copy()
+    for i in range(len(guesses)):
+        temp_final_words = []
+        temp_words = []
+        guess = guesses[i]
+        response = responses[i]
+        for word in ranged_final_words:
+            if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
+                continue
+            temp_final_words.append(word)
+        for word in ranged_words:
+            if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
+                continue
+            temp_words.append(word)
+        ranged_final_words = temp_final_words.copy()
+        ranged_words = temp_words.copy()
     if (len(ranged_final_words) == 1 or len(guesses) >= 5):
         return ranged_final_words[0] # only one possible final word or the guess is the last one    
     else:
@@ -121,7 +115,7 @@ if __name__ == "__main__":
     # print first 10 as a quick check
     game_state = {
         "progress": [],
-        "response": []
+        "response": [] 
     }
     max_depth = 0
     s = 0
@@ -131,7 +125,6 @@ if __name__ == "__main__":
             "progress": [],
             "response": []
         }
-        guess = get_next_guess(game_state)
         while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
             guess = get_next_guess(game_state)
             response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
