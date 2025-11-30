@@ -259,35 +259,39 @@ if __name__ == "__main__":
     strategy = {}
     g = game.Game()
 
-    success = 0
-    fail = 0
-    totalmoves = 0
-    
-    # Test on a few games
-    for i in range(len(ANSWER_WORDS)): 
-        print(f"--- UCS Test Game {i+1} ---")
-        g.new_game(ANSWER_WORDS[i])
-        while True:
-            state = g.response
-            next_word = use_strategy_map(state, strategy)
-            if next_word is None: break
-            
-            print(f"Guess: {next_word}")
-            res = g.add_guess(next_word)
-            
-            state = g.response
-            print(f"Response: {res}")
-            print(f"Progress: {state['progress']}")
-            print(f"Responses: {state['response']}")            
 
-            if state["is_game_over"]:
-                if res == "Win":
-                    success += 1
-                    totalmoves += len(state['response'])
-                    print(f"Won in {len(state['response'])} moves.")
-                else:
-                    fail += 1
-                    print("Lost.")
-                break
     
-    print(f"UCS Solver Results: {success} Wins, {fail} Losses, Average Moves: {totalmoves/success if success > 0 else 0:.2f}")
+    for word in ALLOWED_WORDS[:50]:
+        success = 0
+        fail = 0
+        totalmoves = 0
+        strategy = ucs_solve_by_state(start_word=word)
+
+        # Test on a few games
+        for i in range(len(ANSWER_WORDS)): 
+            # print(f"--- UCS Test Game {i+1} ---")
+            g.new_game(ANSWER_WORDS[i])
+            while True:
+                state = g.response
+                next_word = use_strategy_map(state, strategy)
+                if next_word is None: break
+                
+                # print(f"Guess: {next_word}")
+                res = g.add_guess(next_word)
+                
+                state = g.response
+                # print(f"Response: {res}")
+                # print(f"Progress: {state['progress']}")
+                # print(f"Responses: {state['response']}")            
+
+                if state["is_game_over"]:
+                    if res == "Win":
+                        success += 1
+                        totalmoves += len(state['response'])
+                        # print(f"Won in {len(state['response'])} moves.")
+                    else:
+                        fail += 1
+                        # print("Lost.")
+                    break
+        
+        print(f"UCS Solver Results: {success} Wins, {fail} Losses, Average Moves: {totalmoves/success if success > 0 else 0:.2f}")
