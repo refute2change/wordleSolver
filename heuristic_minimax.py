@@ -5,6 +5,7 @@ import os
 import csv
 import math
 import json
+import random
 # import game
 import wordHandle
 
@@ -105,29 +106,36 @@ if __name__ == "__main__":
     max_depth = 0
     s = 0
     cnt = 0
-    for word in final_words:
-        game_state = {
-            "progress": [],
-            "response": []
-        }
-        while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
-            guess = get_next_guess(game_state)
-            response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
-            game_state["progress"].append(guess)
-            game_state["response"].append(response)
-            print(f"Guess: {guess}, Response: {response}")
-        if max_depth <  len(game_state["progress"]):
-            max_depth = len(game_state["progress"])
-            longest_path = game_state["progress"].copy()
-        s += len(game_state["progress"])
-        if (len(game_state["progress"]) <= 6):
-            cnt += 1
+    # for word in final_words:
+    game_state = {
+        "progress": [],
+        "response": []
+    }
+    word = random.choice(final_words)
+    while (cnt < 5) and (cnt == 0 or game_state["response"][-1] != "GGGGG"):
+        recommendation = get_next_guess(game_state)
+        print(f"My recommendation is {recommendation}.")
+        guess = input("Or you follows the best heuristic or you type your own guess and be a loser here <(\"): ").strip().lower()
+        response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
+        game_state["progress"].append(guess)
+        game_state["response"].append(response)
+        print(f"Guess: {guess}, Response: {response}")
+        cnt += 1
+    if max_depth <  len(game_state["progress"]):
+        max_depth = len(game_state["progress"])
+        longest_path = game_state["progress"].copy()
+    s += len(game_state["progress"])
+    if (game_state["response"][-1] == "GGGGG"):
+        # cnt += 1
+        print(f"Solved the word {word} in {len(game_state['progress'])} guesses.")
+    else:
+        print(f"Failed to solve the word {word} in 6 guesses.")
     # if len(game_state["response"]) == 5 and game_state["response"][-1] != "GGGGG":
     #    print("Sorry, you've used all your guesses and you're a failed human.")
     t1 = perf_counter()
-    print(f"Time taken per word (without calculating best-first guess): {(t1 - t0)/len(final_words)} seconds")
-    print(f"Average depth for single-word resolutions: {s / len(final_words)}")
-    print(f"Maximum depth for single-word resolutions: {max_depth}")
-    print(f"Longest path: {longest_path}")
-    print(f"Number of words solved within 6 guesses: {cnt} out of {len(final_words)}, with success rate {cnt/len(final_words)*100:.2f}%")
+    # print(f"Time taken per word (without calculating best-first guess): {(t1 - t0)/len(final_words)} seconds")
+    # print(f"Average depth for single-word resolutions: {s / len(final_words)}")
+    # print(f"Maximum depth for single-word resolutions: {max_depth}")
+    # print(f"Longest path: {longest_path}")
+    # print(f"Number of words solved within 6 guesses: {cnt} out of {len(final_words)}, with success rate {cnt/len(final_words)*100:.2f}%")
 
