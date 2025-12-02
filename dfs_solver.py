@@ -87,10 +87,6 @@ def get_next_guess(game_state: dict) -> str:
     for i in range(len(guesses) - 1):
         guess = guesses[i]
         response = responses[i]
-        ranged_words = [
-            word for word in ranged_words
-            if wordHandle.get_response(guess, word) == response
-        ]
         ranged_final_words = [
             word for word in ranged_final_words
             if wordHandle.get_response(guess, word) == response
@@ -98,6 +94,13 @@ def get_next_guess(game_state: dict) -> str:
     if (len(ranged_final_words) == 1 or len(guesses) >= 6):
         return ranged_final_words[0] # only one possible final word or the guess is the last one    
     else:
+        for i in range(len(guesses) - 1):
+            guess = guesses[i]
+            response = responses[i]
+            ranged_words = [
+                word for word in ranged_words
+                if wordHandle.get_response(guess, word) == response
+            ]
         return dfs(0, ranged_words)
     
 if __name__ == "__main__":
