@@ -289,7 +289,7 @@ class WordleUI:
 
         # 6. Win/Loss Overlay
         if data["is_game_over"]:
-            self.draw_game_over(False if len(data["response"]) == 0 else (len(data["response"]) != 6 and data["response"][-1] == [2,2,2,2,2]))
+            self.draw_game_over(False if len(data["response"]) == 0 else (data["response"][-1] == [2,2,2,2,2]))
 
     def draw_game_over(self, is_win):
         msg = "YOU WIN" if is_win else "YOU LOSE"
