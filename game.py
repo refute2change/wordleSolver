@@ -15,19 +15,28 @@ class Game:
         with open(os.path.dirname(os.path.abspath(__file__)) + "\\answers\\allowed_words.txt", "r") as f:
             self.answers_list = f.read().splitlines()
 
-    def new_game(self):
+    def new_game(self, answer: str = ""):
         # We create a fresh State object rather than resetting variables manually
         self.state = State()
-        self.set_answer()
+        self.set_answer(answer = answer)
         self.stop = False
 
-    def set_answer(self):
+    def set_answer(self, answer: str = ""):
         # LOGIC MOVED HERE: The Game decides the word, not the State.
         path = os.path.dirname(os.path.abspath(__file__))
+        if answer != "":
+            with open(path + "\\answers\\answers.txt", "r") as f:
+                if answer in f.read().splitlines():
+                    self.state.answer = answer
+                    return
         # Kept your Windows path style as requested
         with open(path + "\\answers\\answers.txt", "r") as f:
             self.state.answer = random.choice(f.read().splitlines())
         self.state.answer = self.state.answer.lower()
+
+    @property
+    def answer(self) -> str:
+        return self.state.get_answer()
 
     @property
     def guess(self) -> int:

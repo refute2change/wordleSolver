@@ -29,3 +29,6 @@ class State:
     def unwind_guess(self):
         if len(self.progress) - len(self.response) == 1:
             self.progress[-1] = ""
+
+    def get_answer(self) -> str:
+        return self.answer
