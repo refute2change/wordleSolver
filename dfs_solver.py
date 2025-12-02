@@ -120,6 +120,7 @@ if __name__ == "__main__":
     max_depth = 0
     s = 0
     cnt = 0
+    mem = 0
     for word in final_words:
         game_state = {
             "progress": [],
@@ -136,6 +137,8 @@ if __name__ == "__main__":
         s += len(game_state["progress"])
         if (len(game_state["progress"]) <= 6):
             cnt += 1
+        import os, psutil; mem += psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
+        
     # if len(game_state["response"]) == 5 and game_state["response"][-1] != "GGGGG":
     #    print("Sorry, you've used all your guesses and you're a failed human.")
     t1 = perf_counter()
@@ -144,4 +147,5 @@ if __name__ == "__main__":
     print(f"Maximum depth for single-word resolutions: {max_depth}")
     print(f"Longest path: {longest_path}")
     print(f"Number of words solved within 6 guesses: {cnt} out of {len(final_words)}, with success rate {cnt/len(final_words)*100:.2f}%")
+    print(f"Average memory used: {mem/len(final_words)} MB")
 

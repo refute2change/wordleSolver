@@ -106,6 +106,7 @@ if __name__ == "__main__":
     max_depth = 0
     s = 0
     cnt = 0
+<<<<<<< Updated upstream
     # for word in final_words:
     game_state = {
         "progress": [],
@@ -130,6 +131,27 @@ if __name__ == "__main__":
         print(f"Solved the word {word} in {len(game_state['progress'])} guesses.")
     else:
         print(f"Failed to solve the word {word} in 6 guesses.")
+=======
+    for word in final_words:
+        game_state = {
+            "progress": [],
+            "response": []
+        }
+        while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
+            guess = get_next_guess(game_state)
+            response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
+            game_state["progress"].append(guess)
+            game_state["response"].append(response)
+            # print(f"Guess: {guess}, Response: {response}")
+        if max_depth <  len(game_state["progress"]):
+            max_depth = len(game_state["progress"])
+            longest_path = game_state["progress"].copy()
+        s += len(game_state["progress"])
+        if (len(game_state["progress"]) <= 6):
+            cnt += 1
+        import os, psutil; print(f"Memory used: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2} MB")
+
+>>>>>>> Stashed changes
     # if len(game_state["response"]) == 5 and game_state["response"][-1] != "GGGGG":
     #    print("Sorry, you've used all your guesses and you're a failed human.")
     t1 = perf_counter()
