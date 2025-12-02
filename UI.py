@@ -1,9 +1,12 @@
 import tkinter as tk
 from tkinter import font
 import game
+import ucs_solver, bfs_solver
+import dfs_solver
+import heuristic_minimax
 import math
-import bfs_new
 import threading  # <--- Added to handle background tasks
+
 
 # --- Configuration & Colors ---
 COLOR_BG_MAIN = "#E3C08D"
@@ -43,13 +46,18 @@ class WordleUI:
         self.game = game.Game()
         self.game.new_game()
 
+        ucs_solver.load_resources()
+        bfs_solver.load_resources()
+        self.ucs = ucs_solver.load_strategy()
+        self.bfs = bfs_solver.load_strategy()
+
         # UI State
         self.last_message = ""
         self.show_support_details = False
         
         # Support Default Values
         self.rec_word = "CRACK"
-        self.selected_algo = "A*" 
+        self.selected_algo = "DFS" 
         self.stat_runtime = "3"
         self.stat_space = "2"
 
@@ -81,7 +89,16 @@ class WordleUI:
         """
         def task():
             # This is the slow part (regenerating the tree if off-script)
-            self.rec_word = bfs_new.use_strategy_map(self.game.response, self.strategy)
+            # self.rec_word = bfs_new.use_strategy_map(self.game.response, self.strategy)
+            if (self.selected_algo == "BFS"):
+                self.rec_word = bfs_solver.get_next_guess(self.game.response, self.bfs) # Handling BFS
+            elif (self.selected_algo == "UCS"):
+                self.rec_word = ucs_solver.get_next_guess(self.game.response, self.ucs) # Handling UCS
+            elif (self.selected_algo == "DFS"):
+                self.rec_word = dfs_solver.get_next_guess(self.game.response) # Handling DFS
+            else:
+                self.rec_word = heuristic_minimax.get_next_guess(self.game.response) # Handling A*
+
             if self.rec_word is None:
                 self.rec_word = ""
             else:
@@ -228,6 +245,16 @@ class WordleUI:
             self.draw_button(panel_x + 30, btn_y, 240, 50, "SUPPORT", COLOR_SUP_BTN_BG, COLOR_SUP_BTN_FG, "btn_support_toggle", radius=25)
         else:
             cx = panel_x + panel_w / 2
+
+            if (data["is_game_over"] == False):
+                if (self.selected_algo == "BFS"):
+                    self.rec_word = bfs_solver.get_next_guess(self.game.response, self.bfs).upper() # Handling BFS
+                elif (self.selected_algo == "UCS"):
+                    self.rec_word = ucs_solver.get_next_guess(self.game.response, self.ucs).upper() # Handling UCS
+                elif (self.selected_algo == "DFS"):
+                    self.rec_word = dfs_solver.get_next_guess(self.game.response).upper() # Handling DFS
+                else:
+                    self.rec_word = heuristic_minimax.get_next_guess(self.game.response).upper() # Handling A*
             
             self.canvas.create_text(cx, panel_y + 40, text="RECOMMENDATION", fill="#FFFFFF", font=self.font_btn)
             self.draw_button(panel_x + 30, panel_y + 60, 240, 60, self.rec_word, COLOR_SUP_BTN_BG, COLOR_SUP_BTN_FG, "btn_crack", radius=15)
@@ -316,7 +343,6 @@ class WordleUI:
             
         if tag.startswith("algo_"):
             algo_name = tag.split("_")[1]
-            if algo_name == "A*": algo_name = "A*"
             self.selected_algo = algo_name
             self.UI_update()
             return

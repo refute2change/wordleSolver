@@ -76,7 +76,6 @@ def dfs(d: int, ranged_words: List[str]) -> str:
 
     return most_frequent_char+dfs(d+1, next_ranged_words)
 
-
 def get_next_guess(game_state: dict) -> str:
     global words
     global final_words
