@@ -28,6 +28,10 @@ def load_resources():
     freq_path = os.path.join(base_path, "answers", "word_frequencies.json")
     
     print(f"Loading resources...")
+
+    # SINGLETON CHECK: If already loaded, do nothing.
+    if MATRIX.size > 0 and len(WORD_COSTS) > 0:
+        return
     
     # 1. Load Matrix
     data = None
@@ -90,8 +94,6 @@ def load_resources():
     SORTED_GUESS_INDICES = [x[0] for x in indices_with_freq]
 
     print("Resources loaded and optimized.")
-
-load_resources()
 
 # --- 2. COST HELPER ---
 def get_word_cost(word_idx):
