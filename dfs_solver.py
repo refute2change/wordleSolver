@@ -3,16 +3,10 @@ from time import perf_counter
 from collections import Counter
 import os
 import csv
-# import game
+import game
 import wordHandle
 
 # test.py
-
-longest_path = []
-words = []
-final_words = []
-hsh = ""
-data = []
 
 def read_wordle_words(path: str) -> List[str]:
     """
@@ -27,6 +21,11 @@ def read_wordle_words(path: str) -> List[str]:
             if s:
                 words.append(s)
     return words
+
+words = []
+final_words = []
+words = read_wordle_words("allowed_words.txt")
+final_words = read_wordle_words("answers.txt")
 
 def gen_string_from_mask(mask: int) -> str:
     str = ""
@@ -85,22 +84,18 @@ def get_next_guess(game_state: dict) -> str:
     ranged_final_words = final_words.copy()
     guesses = game_state["progress"]
     responses = game_state["response"]
-    for i in range(len(guesses)):
-        temp_final_words = []
-        temp_words = []
+    for i in range(len(guesses) - 1):
         guess = guesses[i]
         response = responses[i]
-        for word in ranged_final_words:
-            if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
-                continue
-            temp_final_words.append(word)
-        for word in ranged_words:
-            if wordHandle.response_to_str(wordHandle.get_response(guess, word)) != response:
-                continue
-            temp_words.append(word)
-        ranged_final_words = temp_final_words.copy()
-        ranged_words = temp_words.copy()
-    if (len(ranged_final_words) == 1 or len(guesses) >= 5):
+        ranged_words = [
+            word for word in ranged_words
+            if wordHandle.get_response(guess, word) == response
+        ]
+        ranged_final_words = [
+            word for word in ranged_final_words
+            if wordHandle.get_response(guess, word) == response
+        ]
+    if (len(ranged_final_words) == 1 or len(guesses) >= 6):
         return ranged_final_words[0] # only one possible final word or the guess is the last one    
     else:
         return dfs(0, ranged_words)
@@ -108,44 +103,31 @@ def get_next_guess(game_state: dict) -> str:
 if __name__ == "__main__":
     first_path = os.path.dirname(os.path.abspath(__file__))
     t0 = perf_counter()
-    words = read_wordle_words("allowed_words.txt")
-    final_words = read_wordle_words("answers.txt")
-    longest_path = []
-    # print(f"Loaded {len(words)} words.")
-    # print first 10 as a quick check
-    game_state = {
-        "progress": [],
-        "response": [] 
-    }
-    max_depth = 0
-    s = 0
-    cnt = 0
+    result = ""
+    g = game.Game()
+    g.new_game()
     mem = 0
-    for word in final_words:
-        game_state = {
-            "progress": [],
-            "response": []
-        }
-        while (len(game_state["response"]) == 0) or (game_state["response"][-1] != "GGGGG"):
-            guess = get_next_guess(game_state)
-            response = wordHandle.response_to_str(wordHandle.get_response(guess, word))
-            game_state["progress"].append(guess)
-            game_state["response"].append(response)
-        if max_depth <  len(game_state["progress"]):
-            max_depth = len(game_state["progress"])
-            longest_path = game_state["progress"].copy()
-        s += len(game_state["progress"])
-        if (len(game_state["progress"]) <= 6):
-            cnt += 1
-        import os, psutil; mem += psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2
-        
-    # if len(game_state["response"]) == 5 and game_state["response"][-1] != "GGGGG":
-    #    print("Sorry, you've used all your guesses and you're a failed human.")
+    while True:
+        state = g.response
+        next_guess = get_next_guess(state)
+        print(f"My recommendations for next guess is {next_guess}.")
+        guess = input(f"Please input your choice: ")
+        res = g.add_guess(guess)
+        state = g.response
+        print(res)
+        print(f"Progress: {state['progress']}")
+        print(f"Response: {state['response']}")
+        if state["is_game_over"]:
+            if res == "Win":
+                print("You win")
+            elif res == "Lose":
+                print("Noob")
+            break
+        import os, psutil; mem = max(mem, psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+    print(f"Result: {result}")
+    print(f"Board: {g.state.progress}")
+    print(f"Colors: {g.state.response}")
     t1 = perf_counter()
-    print(f"Time taken per word: {(t1 - t0)/len(final_words)} seconds")
-    print(f"Average depth for single-word resolutions: {s / len(final_words)}")
-    print(f"Maximum depth for single-word resolutions: {max_depth}")
-    print(f"Longest path: {longest_path}")
-    print(f"Number of words solved within 6 guesses: {cnt} out of {len(final_words)}, with success rate {cnt/len(final_words)*100:.2f}%")
-    print(f"Average memory used: {mem/len(final_words)} MB")
+    print(f"Time run: {t1-t0} seconds")
+    print(f"Maximum memory used: {mem} MB")
 
