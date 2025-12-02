@@ -10,7 +10,7 @@ def generate_pattern_matrix():
     with open(os.path.join(base_path, "answers", "allowed_words.txt"), "r") as f:
         allowed = f.read().splitlines()
     with open(os.path.join(base_path, "answers", "answers.txt"), "r") as f:
-        answers = f.read().splitlines()
+        answers = allowed
 
     print(f"Generating Matrix for {len(allowed)} guesses vs {len(answers)} answers...")
     print("This will take about 1-2 minutes.")

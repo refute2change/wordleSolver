@@ -5,35 +5,50 @@ import time
 import pickle
 import game
 import random
-import heapq  # For Priority Queue (UCS)
+import heapq  
+import sys
+import numpy as np 
 
 # --- 1. GLOBAL RESOURCES ---
 ALLOWED_MAP = {}
 ANSWER_MAP = {}
-MATRIX = []
+MATRIX = np.array([]) 
 ALLOWED_WORDS = []
 ANSWER_WORDS = []
 WORD_FREQ = {}
 SORTED_GUESS_INDICES = [] 
+WORD_COSTS = [] 
 
 def load_resources():
-    global MATRIX, ALLOWED_WORDS, ANSWER_WORDS, ALLOWED_MAP, ANSWER_MAP, WORD_FREQ, SORTED_GUESS_INDICES
+    global MATRIX, ALLOWED_WORDS, ANSWER_WORDS, ALLOWED_MAP, ANSWER_MAP, WORD_FREQ, SORTED_GUESS_INDICES, WORD_COSTS
     
     base_path = os.path.dirname(os.path.abspath(__file__))
-    matrix_path = os.path.join(base_path, "pattern_matrix.json")
+    matrix_path = os.path.join(base_path, "pattern_matrix.pkl")
+    json_path = os.path.join(base_path, "pattern_matrix.json")
     freq_path = os.path.join(base_path, "answers", "word_frequencies.json")
     
     print(f"Loading resources...")
     
     # 1. Load Matrix
+    data = None
     if os.path.exists(matrix_path):
-        with open(matrix_path, "r") as f:
+        print(f"Loading from pickle: {matrix_path}")
+        with open(matrix_path, "rb") as f:
+            data = pickle.load(f)
+    elif os.path.exists(json_path):
+        print(f"Loading from json: {json_path}")
+        with open(json_path, "r") as f:
             data = json.load(f)
-        MATRIX = data["matrix"]
+            
+    if data:
+        print("Converting Matrix to NumPy...")
+        MATRIX = np.array(data["matrix"], dtype=np.uint8)
         ALLOWED_WORDS = data["allowed_words"]
         ANSWER_WORDS = data["answer_words"]
+        print(f"Matrix Size: {MATRIX.nbytes / 1024 / 1024:.2f} MB")
+        del data 
     else:
-        print("Error: pattern_matrix.json not found.")
+        print("Error: pattern_matrix not found.")
         return
 
     # 2. Load Frequencies
@@ -48,10 +63,27 @@ def load_resources():
     ALLOWED_MAP = {w: i for i, w in enumerate(ALLOWED_WORDS)}
     ANSWER_MAP = {w: i for i, w in enumerate(ANSWER_WORDS)}
     
-    # 3. Create Optimized Search Order
+    # Pre-calculate costs
+    MEAN_FREQ = 1.75
+    MAX_FREQ = 6.4
+    COST_RARE = 2.0
+    COST_MEAN = 1.0
+    COST_COMMON = 0.6
+    
+    WORD_COSTS = [0.0] * len(ALLOWED_WORDS)
     indices_with_freq = []
+    
     for i, w in enumerate(ALLOWED_WORDS):
         f = WORD_FREQ.get(w, 0.0)
+        
+        if f <= MEAN_FREQ:
+            ratio = f / MEAN_FREQ
+            cost = COST_RARE - (ratio * (COST_RARE - COST_MEAN))
+        else:
+            ratio = (f - MEAN_FREQ) / (MAX_FREQ - MEAN_FREQ)
+            cost = COST_MEAN - (ratio * (COST_MEAN - COST_COMMON))
+            
+        WORD_COSTS[i] = cost
         indices_with_freq.append((i, f))
     
     indices_with_freq.sort(key=lambda x: x[1], reverse=True)
@@ -61,75 +93,66 @@ def load_resources():
 
 load_resources()
 
-# --- 2. COST HELPER (NEW) ---
-def get_word_cost(word):
-    """
-    Calculates cost based on specific distribution metrics:
-    Mean: 1.75, Max: 6.4, Min: 0.0
-    
-    Strategy: Piecewise Linear Interpolation
-    - Freq 0.0 (Rare)  -> Cost 2.0 (High Penalty: counts as 2 turns)
-    - Freq 1.75 (Mean) -> Cost 1.0 (Baseline: counts as 1 turn)
-    - Freq 6.4 (Max)   -> Cost 0.6 (Reward: cheap info)
-    """
-    f = WORD_FREQ.get(word, 0.0)
-    
-    # Thresholds from your data
-    MEAN_FREQ = 1.75
-    MAX_FREQ = 6.4
-    
-    # Costs
-    COST_RARE = 2.0
-    COST_MEAN = 1.0
-    COST_COMMON = 0.6
+# --- 2. COST HELPER ---
+def get_word_cost(word_idx):
+    return WORD_COSTS[word_idx]
 
-    if f <= MEAN_FREQ:
-        # Interpolate between 0.0 and 1.75
-        # Slope = (1.0 - 2.0) / (1.75 - 0) = -1.0 / 1.75 = -0.57
-        ratio = f / MEAN_FREQ
-        return COST_RARE - (ratio * (COST_RARE - COST_MEAN))
-    else:
-        # Interpolate between 1.75 and 6.4
-        ratio = (f - MEAN_FREQ) / (MAX_FREQ - MEAN_FREQ)
-        return COST_MEAN - (ratio * (COST_MEAN - COST_COMMON))
-
-# --- 3. HELPER: FREQUENCY-AWARE SELECTION ---
+# --- 3. HELPER: FREQUENCY-AWARE SELECTION (DEFERRED BUILD) ---
 def find_best_move_for_state(current_indices, depth):
     """
     Calculates the best move using a strategy that favors common words.
+    OPTIMIZED: Uses Deferred Group Construction to avoid memory churn.
     """
     if not current_indices:
         return None, {}
 
     best_idx = -1
     min_worst = float('inf')
-    best_groups = {}
+    # We NO LONGER build best_groups inside the loop
+    
+    # Convert candidates to numpy array once
+    candidates_arr = np.array(current_indices)
 
-    if depth == 5:
+    if len(current_indices) <= 2:
         search_indices = [ALLOWED_MAP[ANSWER_WORDS[i]] for i in current_indices]
-        search_indices.sort(key=lambda idx: WORD_FREQ.get(ALLOWED_WORDS[idx], 0.0), reverse=True)
+    elif depth == 5:
+        search_indices = [ALLOWED_MAP[ANSWER_WORDS[i]] for i in current_indices]
+        search_indices.sort(key=lambda idx: WORD_COSTS[idx])
     else:
         search_indices = SORTED_GUESS_INDICES
 
     for guess_idx in search_indices:
-        groups = collections.defaultdict(list)
+        # 1. VECTORIZED LOOKUP
+        patterns = MATRIX[guess_idx, candidates_arr]
         
-        for ans_idx in current_indices:
-            pat_int = MATRIX[guess_idx][ans_idx]
-            groups[pat_int].append(ans_idx)
+        # 2. VECTORIZED COUNTING
+        counts = np.bincount(patterns, minlength=243)
         
-        worst = 0
-        if groups:
-            worst = max(len(g) for g in groups.values())
+        # 3. CHECK WORST CASE
+        worst = counts.max()
+        
+        if worst >= min_worst:
+            continue
 
-        if worst < min_worst:
-            min_worst = worst
-            best_idx = guess_idx
-            best_groups = groups
-            if min_worst == 1: 
-                break
+        min_worst = worst
+        best_idx = guess_idx
+        
+        # --- OPTIMIZATION: DO NOT BUILD LISTS YET ---
+        # We just remember that this index is the winner so far.
+        # We avoid the expensive loop/append logic here.
+
+        if min_worst == 1: 
+            break
             
     if best_idx != -1:
+        # --- NOW WE BUILD THE GROUPS ---
+        # We do this exactly ONCE per node, instead of potentially 20-30 times.
+        best_groups = collections.defaultdict(list)
+        patterns = MATRIX[best_idx, candidates_arr]
+        
+        for idx, pat in zip(current_indices, patterns):
+            best_groups[pat].append(idx)
+            
         return ALLOWED_WORDS[best_idx], best_groups
     
     if current_indices:
@@ -137,11 +160,8 @@ def find_best_move_for_state(current_indices, depth):
         
     return None, {}
 
-# --- 4. UCS STATE SOLVER (Priority Queue) ---
+# --- 4. UCS STATE SOLVER ---
 def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = None):
-    """
-    Generates a strategy tree using Uniform Cost Search with Variable Costs.
-    """
     pq = [] 
     strategy_map = {}
     visited_states = set()
@@ -154,22 +174,23 @@ def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
     else:
         initial_indices = list(range(len(ANSWER_WORDS)))
     
-    # Push initial state
     if start_word:
         start_idx = ALLOWED_MAP[start_word]
         initial_tuple = tuple(initial_indices)
         strategy_map[initial_tuple] = start_word
         visited_states.add(initial_tuple)
         
+        # NumPy Split for Start Node
+        c_arr = np.array(initial_indices)
+        patterns = MATRIX[start_idx, c_arr]
+        
         groups = collections.defaultdict(list)
-        for ans_idx in initial_indices:
-            pat_int = MATRIX[start_idx][ans_idx]
-            groups[pat_int].append(ans_idx)
+        for idx, pat in zip(initial_indices, patterns):
+            groups[pat].append(idx)
             
         for subset in groups.values():
             if len(subset) > 0:
-                # Initial Cost = Cost of the start word
-                start_cost = get_word_cost(start_word)
+                start_cost = get_word_cost(start_idx)
                 heapq.heappush(pq, (start_cost, id(subset), subset, 1))
     else:
         heapq.heappush(pq, (0, id(initial_indices), initial_indices, 0))
@@ -177,10 +198,9 @@ def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
     start_time = time.time()
     nodes_processed = 0
 
-    print(f"Starting UCS for {len(initial_indices)} candidates...")
+    print(f"Starting UCS (Exhaustive) for {len(initial_indices)} candidates...")
 
     while pq:
-        # Pop state with lowest ACCUMULATED COST
         cost, _, current_indices, depth = heapq.heappop(pq)
         state_id = tuple(current_indices)
 
@@ -199,38 +219,70 @@ def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
         if best_word:
             strategy_map[state_id] = best_word
             
-            # --- CALCULATE VARIABLE COST ---
-            move_cost = get_word_cost(best_word)
+            best_idx = ALLOWED_MAP[best_word]
+            move_cost = get_word_cost(best_idx)
             new_total_cost = cost + move_cost
             
             for pat_int, subset in best_groups.items():
                 if pat_int == 242: continue 
-                
-                # Push children with the new accumulated cost
                 heapq.heappush(pq, (new_total_cost, id(subset), subset, depth + 1))
             
         nodes_processed += 1
         if nodes_processed % 100 == 0:
             print(f"Processed: {nodes_processed} | PQ Size: {len(pq)} | Cost: {cost:.2f} | Time: {time.time()-start_time:.1f}s")
 
+    print(f"UCS Complete. Total Nodes: {nodes_processed} | Time: {time.time()-start_time:.1f}s")
     return strategy_map
 
-# --- 5. RUNTIME HELPER ---
-def use_strategy_map(game_state, strategy_map):
+# --- 5. PERSISTENCE HELPERS ---
+def save_strategy(strategy_map):
+    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map.pkl")
+    os.makedirs(os.path.dirname(STRATEGY_FILE), exist_ok=True)
+    with open(STRATEGY_FILE, "wb") as f:
+        pickle.dump(strategy_map, f)
+    print(f"Strategy map saved to {STRATEGY_FILE}. Size: {len(strategy_map)} states.")
+
+def load_strategy():
+    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map.pkl")
+    if os.path.exists(STRATEGY_FILE):
+        try:
+            with open(STRATEGY_FILE, "rb") as f:
+                strategy = pickle.load(f)
+            print(f"Loaded strategy map with {len(strategy)} states.")
+            return strategy
+        except Exception as e:
+            print(f"Error loading strategy: {e}")
+            return {}
+    return {}
+
+# --- 6. RUNTIME HELPER ---
+def get_next_guess(game_state, strategy_map):
+    if not strategy_map:
+        loaded = load_strategy()
+        if loaded:
+            strategy_map.update(loaded)
+        else:
+            print("No strategy found. Generating initial 'salet' strategy...")
+            strategy_map.update(ucs_solve_by_state(start_word="salet"))
+            save_strategy(strategy_map)
+
     game_progress = game_state["progress"]
     game_responses = game_state["response"]
     game_finished = game_state["is_game_over"]
 
     if len(game_responses) == 0:
-        if not strategy_map:
-            print("Generating initial strategy...")
-            strategy_map.update(ucs_solve_by_state(start_word="salet")) 
+        initial_key = tuple(range(len(ANSWER_WORDS))) 
+        if initial_key not in strategy_map:
+             print("Initial state missing. Regenerating 'salet' strategy...")
+             strategy_map.update(ucs_solve_by_state(start_word="salet"))
+             save_strategy(strategy_map)
         return strategy_map.get(max(strategy_map.keys(), key=len))
 
     if game_finished:
         return None
 
-    current_indices = list(range(len(ANSWER_WORDS)))
+    current_indices = np.arange(len(ANSWER_WORDS))
+    
     for guess, resp_list in zip(game_progress, game_responses):
         if not guess or guess not in ALLOWED_MAP: continue
         guess_idx = ALLOWED_MAP[guess]
@@ -239,10 +291,11 @@ def use_strategy_map(game_state, strategy_map):
         for j, digit in enumerate(resp_list):
             target_val += digit * (3 ** (4 - j))
             
-        current_indices = [
-            idx for idx in current_indices 
-            if MATRIX[guess_idx][idx] == target_val
-        ]
+        patterns = MATRIX[guess_idx, current_indices]
+        mask = (patterns == target_val)
+        current_indices = current_indices[mask]
+    
+    current_indices = current_indices.tolist()
     
     if not current_indices: return None
 
@@ -251,47 +304,78 @@ def use_strategy_map(game_state, strategy_map):
         return strategy_map[state_id]
     
     print(f"Off-script state ({len(current_indices)} candidates). Recovering with UCS...")
-    strategy_map.update(ucs_solve_by_state(initial_candidates=[ANSWER_WORDS[i] for i in current_indices]))
+    new_sub_strategy = ucs_solve_by_state(initial_candidates=[ANSWER_WORDS[i] for i in current_indices])
+    
+    strategy_map.update(new_sub_strategy)
+    save_strategy(strategy_map)
     
     return strategy_map.get(state_id)
 
 if __name__ == "__main__":
-    strategy = {}
+    strategy = load_strategy()
+    
+    input()
     g = game.Game()
 
+    g.new_game()
 
+    while True:
+        state = g.response
+        # Strategy map is mutable dict, updates happen inside use_strategy_map
+        next_guess = get_next_guess(game_state=state, strategy_map=strategy)
+        print(f"The bot suggests: {next_guess}.")
+        if not next_guess:
+            print("No valid guess found. Exiting game.")
+            # fail += 1
+            break
+        guess = input("Enter your guess (or 'exit' to quit): ").strip().lower()
+        if guess == 'exit':
+            print("Exiting game.")
+            break
+        res = g.add_guess(guess)
+        print(f"Response: {res}")
+        print(f"Progress: {g.response['progress']}")
+        print(f"Responses: {g.response['response']}")
+        if g.response["is_game_over"]:
+            if res == "Win":
+                print(f"Won in {len(state['response'])} moves.")
+            else:
+                # fail += 1
+                print(f"Lost. The answer was: {g.answer}.")
+            break
+
+    # success = 0
+    # fail = 0
+    # totalmoves = 0
+
+    # with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "answers", "answers.txt"), "r") as f:
+    #     answer_list = f.read().splitlines()
     
-    for word in ALLOWED_WORDS[:50]:
-        success = 0
-        fail = 0
-        totalmoves = 0
-        strategy = ucs_solve_by_state(start_word=word)
+    # for i in range(len(answer_list)): 
+    #     print(f"--- UCS Test Game {i+1} ---")
+    #     g.new_game(answer_list[i])
+    #     while True:
+    #         state = g.response
+    #         # Strategy map is mutable dict, updates happen inside get_next_guess
+    #         next_word = get_next_guess(state, strategy)
+    #         if next_word is None: break
+            
+    #         print(f"Guess: {next_word}")
+    #         res = g.add_guess(next_word)
+            
+    #         state = g.response
+    #         print(f"Response: {res}")
+    #         print(f"Progress: {state['progress']}")
+    #         print(f"Responses: {state['response']}")            
 
-        # Test on a few games
-        for i in range(len(ANSWER_WORDS)): 
-            # print(f"--- UCS Test Game {i+1} ---")
-            g.new_game(ANSWER_WORDS[i])
-            while True:
-                state = g.response
-                next_word = use_strategy_map(state, strategy)
-                if next_word is None: break
-                
-                # print(f"Guess: {next_word}")
-                res = g.add_guess(next_word)
-                
-                state = g.response
-                # print(f"Response: {res}")
-                # print(f"Progress: {state['progress']}")
-                # print(f"Responses: {state['response']}")            
-
-                if state["is_game_over"]:
-                    if res == "Win":
-                        success += 1
-                        totalmoves += len(state['response'])
-                        # print(f"Won in {len(state['response'])} moves.")
-                    else:
-                        fail += 1
-                        # print("Lost.")
-                    break
-        
-        print(f"UCS Solver Results: {success} Wins, {fail} Losses, Average Moves: {totalmoves/success if success > 0 else 0:.2f}")
+    #         if state["is_game_over"]:
+    #             if res == "Win":
+    #                 success += 1
+    #                 totalmoves += len(state['response'])
+    #                 print(f"Won in {len(state['response'])} moves.")
+    #             else:
+    #                 fail += 1
+    #                 print("Lost.")
+    #             break
+    
+    # print(f"UCS Solver Results: {success} Wins, {fail} Losses, Average Moves: {totalmoves/success if success > 0 else 0:.2f}")

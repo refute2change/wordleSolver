@@ -35,6 +35,10 @@ class Game:
         self.state.answer = self.state.answer.lower()
 
     @property
+    def answer(self) -> str:
+        return self.state.get_answer()
+
+    @property
     def guess(self) -> int:
         return self.state.current_row_index()
 
