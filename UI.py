@@ -293,13 +293,16 @@ class WordleUI:
 
     def draw_game_over(self, is_win):
         msg = "YOU WIN" if is_win else "YOU LOSE"
+        word_msg = "The correct word was " + self.game.state.answer.upper()
         color = COLOR_BTN_NEW_BG if is_win else COLOR_BOX_ABSENT
         
         self.canvas.create_rectangle(0, 0, 1200, 700, fill="#FFFFFF", stipple="gray50")
         
         cx, cy = 550, 350
         self.canvas.create_text(cx, cy - 30, text=msg, fill=color, font=("Helvetica", 40, "bold"))
-        self.draw_button(cx - 70, cy + 20, 140, 50, "New game", COLOR_BTN_NEW_BG, COLOR_BTN_NEW_FG, "btn_new_game_over")
+        if (is_win == False):
+            self.canvas.create_text(cx, cy + 15, text=word_msg, fill = color, font = ("Helvetica", 20, "bold"))
+        self.draw_button(cx - 70, cy + 30, 140, 50, "New game", COLOR_BTN_NEW_BG, COLOR_BTN_NEW_FG, "btn_new_game_over")
 
     # --- Interaction Handlers ---
 

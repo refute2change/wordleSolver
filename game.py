@@ -125,7 +125,7 @@ class Game:
         if guess in self.state.progress[:-1]:
             return "Already Guessed"
 
-        print(self.state.answer)
+        # print(self.state.answer)
         
         # 2. Update Logic (FIX 2: Only calculating response here, once)
         response = wordHandle.get_response(guess, self.state.answer)
