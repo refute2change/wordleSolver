@@ -378,6 +378,11 @@ class WordleUI:
         else:
             self.last_message = ""
 
+def start():
+    root = tk.Tk()
+    app = WordleUI(root)
+    root.mainloop()
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = WordleUI(root)
