@@ -3,6 +3,7 @@ import os
 import time
 import pickle
 import game
+import json
 # import tracemalloc
 import numpy as np  # Required
 
@@ -161,8 +162,6 @@ def bfs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
         if len(current_indices) == 1:
             strategy_map[state_id] = ANSWER_WORDS[current_indices[0]]
             continue
-        
-        if depth >= 6: continue
 
         best_word, best_groups = find_best_move_for_state(current_indices, depth)
         
@@ -176,12 +175,13 @@ def bfs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
         if nodes_processed % 100 == 0:
             # current_mem, peak_mem = tracemalloc.get_traced_memory()
             print(f"Processed: {nodes_processed} | Queue: {len(queue)} | Time: {time.time()-start_time:.1f}s")
-        
-    print(f"Processed: {nodes_processed} | Queue: {len(queue)} | Time: {time.time()-start_time:.1f}s")
+    
+    elapsed_time = time.time() - start_time
+    print(f"Processed: {nodes_processed} | Queue: {len(queue)} | Time: {elapsed_time:.1f}s")
     # current_mem, peak_mem = tracemalloc.get_traced_memory()
     # tracemalloc.stop()
     # print(f"Tree generation complete. Peak Memory Usage: {peak_mem / 1024 / 1024:.2f} MB")
-    return strategy_map
+    return strategy_map, nodes_processed, elapsed_time
 
 # --- 4. RUNTIME HELPER ---
 def load_strategy(filename="bfs_state_strategy.pkl"):
@@ -274,46 +274,65 @@ def load_strategy():
     return {}
 
 if __name__ == "__main__":
-    # input()
-    # strategy = bfs_solve_by_state(start_word="crane")
-    # save_strategy(strategy)
-    strategy = load_strategy()
-
-    # input()
-    # with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "answers", "answers.txt"), "r") as f:
-    #     answer_list = f.read().splitlines()
-    
+    load_resources()
+    word_set = ['finds', 'dykes', 'motes', 'salle', 'swill', 'uncus', 'alays', 'skald', 'sprad', 'mashy', 'refix', 'chibs', 'altar', 'herye', 'comas', 'gotta', 'scion', 'bisom', 'mimic', 'coxed', 'samas', 'gulag', 'savoy', 'runty', 'dryly', 'dirge', 'safes', 'smite', 'award', 'donee', 'foray', 'knows', 'adred', 'galah', 'daych', 'lawny', 'unpin', 'trank', 'rolfs', 'podia', 'godso', 'sakai', 'inula', 'yarns', 'iambi', 'tying', 'tozed', 'miaul', 'salop', 'nisus'] 
     g = game.Game()
-    # success = 0
-    # fail = 0
-    # totalmoves = 0
-    # fails = []
 
-    g.new_game()
-    while True:
-        state = g.response
-        # Strategy map is mutable dict, updates happen inside use_strategy_map
-        next_guess = get_next_guess(game_state=state, strategy_map=strategy)
-        print(f"The bot suggests: {next_guess}.")
-        if not next_guess:
-            print("No valid guess found. Exiting game.")
-            # fail += 1
-            break
-        guess = input("Enter your guess (or 'exit' to quit): ").strip().lower()
-        if guess == 'exit':
-            print("Exiting game.")
-            break
-        res = g.add_guess(guess)
-        print(f"Response: {res}")
-        print(f"Progress: {g.response['progress']}")
-        print(f"Responses: {g.response['response']}")
-        if g.response["is_game_over"]:
-            if res == "Win":
-                print(f"Won in {len(state['response'])} moves.")
-            else:
-                # fail += 1
-                print(f"Lost. The answer was: {g.answer}.")
-            break
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "answers", "answers.txt"), "r") as f:
+        answer_list = f.read().splitlines()
+
+    expermentreport = {i:{'nodes_processed':0, 'time':0.0, 'wins': 0, 'moves': [], 'avg_time_per_guess': 0.0, 'avg_time_per_game': 0.0} for i in word_set}
+
+    for w in word_set:
+
+        strategy, nodes_expanded, processed_time = bfs_solve_by_state(start_word=w)
+
+        success = 0
+        fail = 0
+        totalmoves = 0
+        moves_used = []
+        totaltimes = 0.0
+        totalmovetime = 0.0
+
+        for answer in answer_list:
+            print(f"--- BFS Test Game for answer '{answer}' starting with '{w}' ---")
+            g.new_game(answer=answer)
+
+            game_start_time = time.time()
+
+            while True:
+                state = g.response
+                # Strategy map is mutable dict, updates happen inside use_strategy_map
+                move_start = time.time()
+                next_guess = get_next_guess(game_state=state, strategy_map=strategy)
+                totalmovetime += time.time() - move_start
+                # print(f"The bot suggests: {next_guess}.")
+                res = g.add_guess(next_guess)
+                print(f"Response: {res}")
+                print(f"Progress: {g.response['progress']}")
+                print(f"Responses: {g.response['response']}")
+                if g.response["is_game_over"]:
+                    moves_used.append(len(state['response']))
+                    totalmoves += len(state['response'])
+                    totaltimes += time.time() - game_start_time
+                    if res == "Win":
+                        success += 1
+                        # print(f"Won in {len(state['response'])} moves.")
+                    else:
+                        fail += 1
+                        # print(f"Lost. The answer was: {g.answer}.")
+                    break
+        expermentreport[w]['nodes_processed'] = nodes_expanded
+        expermentreport[w]['time'] = processed_time
+        expermentreport[w]['wins'] = success
+        expermentreport[w]['moves'] = moves_used
+        expermentreport[w]['avg_time_per_guess'] = totalmovetime / totalmoves if totalmoves > 0 else 0.0
+        expermentreport[w]['avg_time_per_game'] = totaltimes / (success + fail) if (success + fail) > 0 else 0.0
+        print("Experiment Report:")
+        print(expermentreport[w])
+    
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bfs_experiment_report.json"), "w") as f:
+        json.dump(expermentreport, f, indent=4)
 
     
 

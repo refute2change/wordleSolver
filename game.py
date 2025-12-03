@@ -35,10 +35,6 @@ class Game:
         self.state.answer = self.state.answer.lower()
 
     @property
-    def answer(self) -> str:
-        return self.state.get_answer()
-
-    @property
     def guess(self) -> int:
         return self.state.current_row_index()
 
@@ -73,8 +69,8 @@ class Game:
         """
         if self.stop: return "Game Ended"
 
-        idx = self.state.current_row_index()
-        if idx >= 6: return "Game Over"
+        # idx = self.state.current_row_index()
+        # if idx >= 6: return "Game Over"
 
         guess = self.state.progress[-1]
 
@@ -95,15 +91,11 @@ class Game:
         # 3. Check Win/Loss
         if guess == self.state.answer:
             self.stop = True
+            if len(self.state.response) > 6:
+                return "Loss"
             return "Win"
-        elif len(self.state.response) == 6:
-            self.stop = True
-            return "Loss"
-        else:
-            if self.state.current_row_index() < 6:
-                # Prepare the next empty row
-                self.state.progress.append("")
-                return "Next Turn"
+        self.state.progress.append("")
+        return "Next Turn"
 
     def submit(self) -> str:
         """
@@ -111,8 +103,8 @@ class Game:
         """
         if self.stop: return "Game Ended"
 
-        idx = self.state.current_row_index()
-        if idx >= 6: return "Game Over"
+        # idx = self.state.current_row_index()
+        # if idx >= 6: return "Game Over"
 
         guess = self.state.progress[-1]
         guess = guess.lower()
@@ -147,8 +139,8 @@ class Game:
     def add_guess(self, guess: str):
         if self.stop: return
 
-        idx = self.state.current_row_index()
-        if idx >= 6: return
+        # idx = self.state.current_row_index()
+        # if idx >= 6: return
 
         self.state.progress[-1] = guess
         return self.submit_guess()

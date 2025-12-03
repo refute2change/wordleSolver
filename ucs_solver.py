@@ -213,8 +213,6 @@ def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
         if len(current_indices) == 1:
             strategy_map[state_id] = ANSWER_WORDS[current_indices[0]]
             continue
-        
-        if depth >= 6: continue
 
         best_word, best_groups = find_best_move_for_state(current_indices, depth)
         
@@ -232,20 +230,21 @@ def ucs_solve_by_state(start_word: str = None, initial_candidates: list[str] = N
         nodes_processed += 1
         if nodes_processed % 100 == 0:
             print(f"Processed: {nodes_processed} | PQ Size: {len(pq)} | Cost: {cost:.2f} | Time: {time.time()-start_time:.1f}s")
+    elapsed = time.time() - start_time
 
-    print(f"UCS Complete. Total Nodes: {nodes_processed} | Time: {time.time()-start_time:.1f}s")
-    return strategy_map
+    print(f"UCS Complete. Total Nodes: {nodes_processed} | Time: {elapsed:.1f}s")
+    return strategy_map, nodes_processed, elapsed
 
 # --- 5. PERSISTENCE HELPERS ---
 def save_strategy(strategy_map):
-    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map.pkl")
+    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map2.pkl")
     os.makedirs(os.path.dirname(STRATEGY_FILE), exist_ok=True)
     with open(STRATEGY_FILE, "wb") as f:
         pickle.dump(strategy_map, f)
     print(f"Strategy map saved to {STRATEGY_FILE}. Size: {len(strategy_map)} states.")
 
 def load_strategy():
-    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map.pkl")
+    STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decision_tree", "ucs_strategy_map2.pkl")
     if os.path.exists(STRATEGY_FILE):
         try:
             with open(STRATEGY_FILE, "rb") as f:
@@ -314,37 +313,65 @@ def get_next_guess(game_state, strategy_map):
     return strategy_map.get(state_id)
 
 if __name__ == "__main__":
-    strategy = load_strategy()
-    
-    input()
+    load_resources()
+    word_set = ['finds', 'dykes', 'motes', 'salle', 'swill', 'uncus', 'alays', 'skald', 'sprad', 'mashy', 'refix', 'chibs', 'altar', 'herye', 'comas', 'gotta', 'scion', 'bisom', 'mimic', 'coxed', 'samas', 'gulag', 'savoy', 'runty', 'dryly', 'dirge', 'safes', 'smite', 'award', 'donee', 'foray', 'knows', 'adred', 'galah', 'daych', 'lawny', 'unpin', 'trank', 'rolfs', 'podia', 'godso', 'sakai', 'inula', 'yarns', 'iambi', 'tying', 'tozed', 'miaul', 'salop', 'nisus'] 
     g = game.Game()
 
-    g.new_game()
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "answers", "answers.txt"), "r") as f:
+        answer_list = f.read().splitlines()
 
-    while True:
-        state = g.response
-        # Strategy map is mutable dict, updates happen inside use_strategy_map
-        next_guess = get_next_guess(game_state=state, strategy_map=strategy)
-        print(f"The bot suggests: {next_guess}.")
-        if not next_guess:
-            print("No valid guess found. Exiting game.")
-            # fail += 1
-            break
-        guess = input("Enter your guess (or 'exit' to quit): ").strip().lower()
-        if guess == 'exit':
-            print("Exiting game.")
-            break
-        res = g.add_guess(guess)
-        print(f"Response: {res}")
-        print(f"Progress: {g.response['progress']}")
-        print(f"Responses: {g.response['response']}")
-        if g.response["is_game_over"]:
-            if res == "Win":
-                print(f"Won in {len(state['response'])} moves.")
-            else:
-                # fail += 1
-                print(f"Lost. The answer was: {g.answer}.")
-            break
+    expermentreport = {i:{'nodes_processed':0, 'time':0.0, 'wins': 0, 'moves': [], 'avg_time_per_guess': 0.0, 'avg_time_per_game': 0.0} for i in word_set}
+
+    for w in word_set:
+
+        strategy, nodes_expanded, processed_time = ucs_solve_by_state(start_word=w)
+
+        success = 0
+        fail = 0
+        totalmoves = 0
+        moves_used = []
+        totaltimes = 0.0
+        totalmovetime = 0.0
+
+        for answer in answer_list:
+            print(f"--- UCS Test Game for answer '{answer}' starting with '{w}' ---")
+            g.new_game(answer=answer)
+
+            game_start_time = time.time()
+
+            while True:
+                state = g.response
+                # Strategy map is mutable dict, updates happen inside use_strategy_map
+                move_start = time.time()
+                next_guess = get_next_guess(game_state=state, strategy_map=strategy)
+                totalmovetime += time.time() - move_start
+                # print(f"The bot suggests: {next_guess}.")
+                res = g.add_guess(next_guess)
+                print(f"Response: {res}")
+                print(f"Progress: {g.response['progress']}")
+                print(f"Responses: {g.response['response']}")
+                if g.response["is_game_over"]:
+                    moves_used.append(len(state['response']))
+                    totalmoves += len(state['response'])
+                    totaltimes += time.time() - game_start_time
+                    if res == "Win":
+                        success += 1
+                        # print(f"Won in {len(state['response'])} moves.")
+                    else:
+                        fail += 1
+                        # print(f"Lost. The answer was: {g.answer}.")
+                    break
+        expermentreport[w]['nodes_processed'] = nodes_expanded
+        expermentreport[w]['time'] = processed_time
+        expermentreport[w]['wins'] = success
+        expermentreport[w]['moves'] = moves_used
+        expermentreport[w]['avg_time_per_guess'] = totalmovetime / totalmoves if totalmoves > 0 else 0.0
+        expermentreport[w]['avg_time_per_game'] = totaltimes / (success + fail) if (success + fail) > 0 else 0.0
+        print("Experiment Report:")
+        print(expermentreport[w])
+    
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ucs_experiment_report.json"), "w") as f:
+        json.dump(expermentreport, f, indent=4)
 
     # success = 0
     # fail = 0

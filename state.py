@@ -19,7 +19,7 @@ class State:
         return {
             "progress": self.progress,
             "response": self.response,
-            "is_game_over": False if len(self.response) == 0 else (self.response[-1] == [2, 2, 2, 2, 2] or len(self.response) == 6)
+            "is_game_over": False if len(self.response) == 0 else (self.response[-1] == [2, 2, 2, 2, 2])
         }
 
     # Helper to just get the current active row index
